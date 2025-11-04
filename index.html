@@ -44,6 +44,7 @@
     .panel{background:#1a1a1a;border-radius:12px;box-shadow:var(--card-shadow);padding:18px;margin-bottom:20px;}
     .panel h3{font-size:1.1rem;margin-bottom:8px;color:#ddd;}
     .chart-wrap{position:relative;height:260px;}
+    #returnBarChart{width:100%;height:100%;}
 
     .portfolio-table{background:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .table-header{background:linear-gradient(135deg,var(--secondary),var(--primary));color:#fff;padding:14px 18px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
@@ -67,6 +68,7 @@
       .chart-wrap{height:220px;}
     }
 
+    /* Soft password gate (not secure) */
     #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;color:#fff;font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,sans-serif;}
     .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
     .gate-card h2{margin:0 0 10px;font-size:1.25rem;}
@@ -120,6 +122,7 @@
         </div>
       </div>
 
+      <!-- Doughnut chart panel -->
       <div class="panel" style="margin-top:12px;">
         <h3>Allocation by Holding</h3>
         <div class="chart-wrap" style="height:340px;">
@@ -128,6 +131,7 @@
       </div>
     </div>
 
+    <!-- Bar chart -->
     <div class="panel">
       <h3>Overall Return by Holding</h3>
       <div class="chart-wrap" style="height:340px;"><canvas id="returnBarChart"></canvas></div>
@@ -136,7 +140,7 @@
     <div class="portfolio-table">
       <div class="table-header">
         <div>Holdings</div>
-        <div>Market Data</div>
+        <div>Market Data (NSE)</div>
       </div>
       <div class="table-container">
         <table>
@@ -162,6 +166,7 @@
     </div>
   </div>
 
+  <!-- Password Gate (cosmetic) -->
   <div id="gateOverlay" aria-modal="true" role="dialog">
     <div class="gate-card" id="gateCard">
       <h2>PRIVATE ACCESS ONLY</h2>
@@ -174,9 +179,10 @@
   </div>
 
   <script>
-    const REFRESH_MS = 120000;
-    
-    // Portfolio - Using ticker symbols (will try both BSE and NSE)
+    // ===== Config =====
+    const REFRESH_MS = 120000; // 2 minutes (Yahoo Finance has rate limits)
+
+    // Portfolio data from CSV
     const PORTFOLIO = [
       {symbol:"ABMKNO",avgCost:306.07,qty:1377},
       {symbol:"APARINDS",avgCost:9663.04,qty:109},
@@ -210,16 +216,18 @@
       ABMKNO:'#FF5252',APARINDS:'#40C4FF',AZAD:'#00C853',AZTEC:'#7C4DFF',
       BATLIBOI:'#18FFFF',BCLIND:'#FFB300',BETA:'#FF6E40',BINNY:'#E91E63',
       BBOX:'#9C27B0',BLS:'#3F51B5',COSMICCRF:'#03A9F4',DANISH:'#00BCD4',
-      EIEL:'#009688',FRONTSP:'#4CAF50',HMEML:'#8BC34A','KLBRENG-B':'#CDDC39',
+      EIEL:'#009688',FRONTSP:'#4CAF50',HMEML:'#8BC34A',KLBRENG:'#CDDC39',
       KMEW:'#FFEB3B',KONSTELEC:'#FFC107',MACPOWER:'#FF9800',MARKSANS:'#FF5722',
       PENIND:'#795548',SHARDAMOTR:'#607D8B',SHIVALIK:'#F06292',SGLTL:'#BA68C8',
       SUMEETINDS:'#9575CD',TASTYBITE:'#7986CB'
     };
 
+    // ===== DOM =====
     const statusEl = document.getElementById("status");
     const updatedTimeEl = document.getElementById("updatedTime");
     const refreshBtn = document.getElementById("refreshBtn");
 
+    // ===== Password gate (not secure) =====
     const PASSPHRASE = "2104";
     const SESSION_KEY = "gate_ok_v1";
     const TTL_MS = 6*60*60*1000;
@@ -234,12 +242,14 @@
     document.getElementById("gateBtn").addEventListener("click",tryOpen);
     document.getElementById("gateInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")tryOpen();});
 
+    // ===== Utilities =====
     function setStatus(msg,isError=false){statusEl.textContent=msg;statusEl.classList.toggle("error",!!isError);}
     function fmtMoney(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
     function fmtPct(n){const s=n>=0?'+':'';return `${s}${(Number(n)||0).toFixed(2)}%`;}
     function fmtSignedMoney(n){const s=n>=0?'+':'-';return `${s}${fmtMoney(Math.abs(n))}`;}
     function parseMoney(text){return parseFloat(String(text||'0').replace(/[^0-9.-]+/g,''))||0;}
 
+    // Initialize table
     function initializeTable(){
       const tbody = document.getElementById('tbody');
       tbody.innerHTML = '';
@@ -248,10 +258,10 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="stock-symbol">${stock.symbol}</td>
-          <td class="stock-price">—</td>
-          <td class="day-return">—</td>
-          <td class="current-value">—</td>
-          <td class="overall-return">—</td>
+          <td class="stock-price" data-symbol="${stock.symbol}">—</td>
+          <td class="day-return" data-symbol="${stock.symbol}">—</td>
+          <td class="current-value" data-symbol="${stock.symbol}">—</td>
+          <td class="overall-return" data-symbol="${stock.symbol}">—</td>
           <td>${fmtMoney(invested)}</td>
           <td>${fmtMoney(stock.avgCost)}</td>
           <td>${stock.qty.toLocaleString('en-IN')}</td>
@@ -263,9 +273,10 @@
     function mapRowsBySymbol(){
       const map={};
       document.querySelectorAll("tbody tr").forEach(tr=>{
-        const symbol=tr.querySelector("td").textContent.trim();
+        const symbol=tr.querySelector("td").textContent.trim().toUpperCase();
         const tds=tr.children;
         map[symbol]={
+          tr,
           priceCell: tds[1],
           dayCell: tds[2],
           currentValCell: tds[3],
@@ -275,203 +286,373 @@
           qtyCell: tds[7],
           get avgCost(){return parseFloat(this.avgCostCell.textContent.replace(/[^0-9.-]+/g,""))||0;},
           get qty(){return parseFloat(this.qtyCell.textContent.replace(/[^0-9.-]+/g,""))||0;},
-          get invested(){return parseFloat(this.investedCell.textContent.replace(/[^0-9.-]+/g,""))||0;}
+          get invested(){
+            const parsed=parseFloat(this.investedCell.textContent.replace(/[^0-9.-]+/g,""));
+            if(!isNaN(parsed)) return parsed;
+            return this.avgCost*this.qty;
+          }
         };
       });
+      document.getElementById('positionsCount').textContent = Object.keys(map).length;
+      document.getElementById('positionsCountNote').textContent = Object.keys(map).length;
       return map;
     }
 
-    // Simple fetch using free Indian stock API
+    // Yahoo Finance API for NSE stocks
     async function fetchQuote(sym){
       try {
-        // Try BSE first, then NSE
-        const bseTicker = `${sym}.BO`;
-        const nseTicker = `${sym}.NS`;
+        // Use Yahoo Finance via query1.finance.yahoo.com
+        const ticker = `${sym}.NS`; // NSE suffix
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
         
-        let url = `https://nse-api-khaki.vercel.app/stock?symbol=${bseTicker}&res=num`;
-        let res = await fetch(url);
-        let data = await res.json();
+        const res = await fetch(url);
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
         
-        // If BSE fails, try NSE
-        if(data.error || !data.currentPrice) {
-          url = `https://nse-api-khaki.vercel.app/stock?symbol=${nseTicker}&res=num`;
-          res = await fetch(url);
-          data = await res.json();
+        const data = await res.json();
+        
+        if(!data.chart || !data.chart.result || data.chart.result.length === 0) {
+          return null;
         }
         
-        if(data.error || !data.currentPrice) return null;
+        const result = data.chart.result[0];
+        const meta = result.meta;
         
-        const currentPrice = parseFloat(data.currentPrice);
-        const prevClose = parseFloat(data.previousClose) || currentPrice;
+        if(!meta || typeof meta.regularMarketPrice !== 'number') {
+          return null;
+        }
+        
+        const currentPrice = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose || meta.previousClose || currentPrice;
         const change = currentPrice - prevClose;
         const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
         
-        return {c: currentPrice, d: change, dp: changePct};
+        return {
+          c: currentPrice,      // current price
+          d: change,            // change $
+          dp: changePct         // change %
+        };
       } catch(e) {
         console.error(`Error fetching ${sym}:`, e);
         return null;
       }
     }
 
+    // ===== Charts =====
     let returnBarChart;
     function ensureReturnBar(symbols){
       if(!returnBarChart){
         returnBarChart = new Chart(document.getElementById('returnBarChart').getContext('2d'), {
           type:'bar',
-          data:{labels:symbols,datasets:[{label:'Overall Return (₹)',data:[],backgroundColor:[],barPercentage:0.6,borderRadius:6}]},
+          data:{
+            labels:symbols,
+            datasets:[{
+              label:'Overall Return (₹)',
+              data:[],
+              backgroundColor:[],
+              barPercentage:0.6,
+              borderRadius:6
+            }]
+          },
           options:{
-            responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',
+            responsive:true, maintainAspectRatio:false, animation:false,
+            indexAxis: 'y',
             scales:{
-              x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},
-              y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}
+              x:{
+                ticks:{color:'#ccc'},
+                grid:{color:'rgba(255,255,255,0.08)'}
+              },
+              y:{
+                ticks:{color:'#ccc',font:{size:10}}, 
+                grid:{color:'rgba(255,255,255,0.08)'}
+              }
             },
             plugins:{legend:{labels:{color:'#fff'}}}
           }
         });
+      } else {
+        returnBarChart.data.labels = symbols.slice();
       }
     }
 
     function updateReturnBars(symbols, returnMap){
       const data = symbols.map(s=> returnMap[s] ?? 0);
       const colors = data.map(v=> v>=0 ? '#31c920' : '#e33232');
-      returnBarChart.data.labels = symbols;
+      returnBarChart.data.labels = symbols.slice();
       returnBarChart.data.datasets[0].data = data;
       returnBarChart.data.datasets[0].backgroundColor = colors;
       returnBarChart.update('none');
     }
 
+    // Doughnut center text plugin
     const donutCenterText = {
       id: 'donutCenterText',
       afterDraw(chart, args, options){
         const {ctx, chartArea} = chart;
         if(!chartArea) return;
+
+        const totalVal = options.totalValue || '₹0.00';
+        const totalRet = options.totalReturn || '+₹0.00';
+        const retColor = options.returnColor || '#31c920';
+
         const centerX = (chartArea.left + chartArea.right)/2;
         const centerY = (chartArea.top + chartArea.bottom)/2;
+
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+
         ctx.fillStyle = '#ffffff';
-        ctx.font = '600 18px Inter';
-        ctx.fillText(options.totalValue || '₹0.00', centerX, centerY - 8);
-        ctx.fillStyle = options.returnColor || '#31c920';
-        ctx.font = '600 12px Inter';
-        ctx.fillText(options.totalReturn || '+₹0.00', centerX, centerY + 16);
+        ctx.font = '600 18px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+        ctx.fillText(totalVal, centerX, centerY - 8);
+
+        ctx.fillStyle = retColor;
+        ctx.font = '600 12px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+        ctx.fillText(totalRet, centerX, centerY + 16);
         ctx.restore();
       }
     };
 
+    // Doughnut chart (allocation by current value share)
     let allocDonutChart;
     function ensureAllocDonut(symbols){
+      const ctx = document.getElementById('allocDonutChart').getContext('2d');
       if(!allocDonutChart){
-        allocDonutChart = new Chart(document.getElementById('allocDonutChart').getContext('2d'), {
+        allocDonutChart = new Chart(ctx, {
           type:'doughnut',
           data:{
-            labels:symbols,
-            datasets:[{label:'% of Portfolio',data:[],backgroundColor:symbols.map(s=>SYMBOL_COLORS[s]||'#888'),borderColor:'#111',borderWidth:1}]
+            labels: symbols.slice(),
+            datasets:[{
+              label:'% of Portfolio',
+              data: [],
+              backgroundColor: symbols.map(s=> SYMBOL_COLORS[s] || '#888'),
+              borderColor:'#111',
+              borderWidth:1,
+              hoverOffset:6
+            }]
           },
           options:{
-            responsive:true,maintainAspectRatio:false,cutout:'60%',
+            responsive:true,
+            maintainAspectRatio:false,
+            cutout:'60%',
             plugins:{
-              legend:{display:true,position:'right',labels:{color:'#fff',font:{size:10}}},
-              tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${(ctx.raw*100).toFixed(2)}%`}},
-              donutCenterText:{totalValue:'₹0.00',totalReturn:'+₹0.00',returnColor:'#31c920'}
+              legend:{
+                display:true,
+                position:'right',
+                labels:{ color:'#fff', font:{size:10} },
+                onClick: function(e, legendItem, legend){
+                  const pieHandler = Chart.controllers.doughnut.overrides.plugins.legend.onClick;
+                  pieHandler(e, legendItem, legend);
+                  setTimeout(() => {
+                    try{ allocDonutChart.update(); }catch(e){}
+                    updateDonutCenterFromVisibility();
+                  }, 0);
+                }
+              },
+              tooltip:{
+                callbacks:{
+                  label:(ctx)=>{
+                    const value = ctx.raw ?? 0;
+                    const pct = (value*100).toFixed(2);
+                    const label = ctx.label || '';
+                    return `${label}: ${pct}%`;
+                  }
+                }
+              },
+              donutCenterText:{
+                totalValue: '₹0.00',
+                totalReturn: '+₹0.00',
+                returnColor: '#31c920'
+              }
             }
           },
           plugins:[donutCenterText]
         });
+      } else {
+        allocDonutChart.data.labels = symbols.slice();
+        allocDonutChart.data.datasets[0].backgroundColor = symbols.map(s=> SYMBOL_COLORS[s] || '#888');
       }
     }
 
-    function updateAllocDonut(symbols, rows){
-      const vals = symbols.map(s=> parseMoney(rows[s]?.currentValCell.textContent || '0'));
+    function updateAllocDonut(symbols){
+      const rows = mapRowsBySymbol();
+      const vals = symbols.map(s=>{
+        const row = rows[s];
+        if(!row) return 0;
+        return parseMoney(row.currentValCell.textContent);
+      });
       const total = vals.reduce((a,b)=>a+b,0);
       const weights = total > 0 ? vals.map(v=> v/total) : vals.map(()=>0);
+
+      ensureAllocDonut(symbols);
       allocDonutChart.data.datasets[0].data = weights;
-      
-      const totalInvested = symbols.reduce((sum,s)=> sum + (rows[s]?.invested || 0), 0);
-      const totalReturn = total - totalInvested;
-      allocDonutChart.options.plugins.donutCenterText.totalValue = fmtMoney(total);
-      allocDonutChart.options.plugins.donutCenterText.totalReturn = fmtSignedMoney(totalReturn);
-      allocDonutChart.options.plugins.donutCenterText.returnColor = totalReturn>=0 ? '#31c920' : '#e33232';
+      updateDonutCenterToFull();
       allocDonutChart.update('none');
     }
 
+    function updateDonutCenterFromVisibility(){
+      if(!allocDonutChart) return;
+      const rows = mapRowsBySymbol();
+      const labels = allocDonutChart.data.labels;
+      const meta = allocDonutChart.getDatasetMeta(0);
+
+      const visibleIdx = labels.map((_, i) => i).filter(i=>{
+        const arc = meta.data[i];
+        return arc && !arc.hidden;
+      });
+
+      let visTotalValue = 0;
+      let visTotalInvested = 0;
+      visibleIdx.forEach(i=>{
+        const sym = labels[i];
+        const row = rows[sym];
+        if(!row) return;
+        const currentVal = parseMoney(row.currentValCell.textContent);
+        const invested = row.invested;
+        visTotalValue += currentVal;
+        visTotalInvested += invested;
+      });
+
+      const visTotalReturn = visTotalValue - visTotalInvested;
+      const tv = fmtMoney(visTotalValue);
+      const trSigned = (visTotalReturn>=0?'+':'-') + fmtMoney(Math.abs(visTotalReturn));
+      const trColor = visTotalReturn>=0 ? '#31c920' : '#e33232';
+
+      allocDonutChart.options.plugins.donutCenterText.totalValue = tv;
+      allocDonutChart.options.plugins.donutCenterText.totalReturn = trSigned;
+      allocDonutChart.options.plugins.donutCenterText.returnColor = trColor;
+      allocDonutChart.update('none');
+    }
+
+    function updateDonutCenterToFull(){
+      const rows = mapRowsBySymbol();
+      let totalValue=0, totalInvested=0;
+      Object.keys(rows).forEach(sym=>{
+        const row = rows[sym];
+        const currentVal = parseMoney(row.currentValCell.textContent);
+        const invested = row.invested;
+        totalValue += currentVal;
+        totalInvested += invested;
+      });
+      const totalReturn = totalValue - totalInvested;
+
+      const tv = fmtMoney(totalValue);
+      const trSigned = (totalReturn>=0?'+':'-') + fmtMoney(Math.abs(totalReturn));
+      const trColor = totalReturn>=0 ? '#31c920' : '#e33232';
+
+      allocDonutChart.options.plugins.donutCenterText.totalValue = tv;
+      allocDonutChart.options.plugins.donutCenterText.totalReturn = trSigned;
+      allocDonutChart.options.plugins.donutCenterText.returnColor = trColor;
+    }
+
+    // ===== Main refresh =====
     async function refreshAll(){
-      const rowMap = mapRowsBySymbol();
-      const symbols = PORTFOLIO.map(s=>s.symbol);
+      const rowMap=mapRowsBySymbol();
+      const symbols=Object.keys(rowMap);
       ensureReturnBar(symbols);
       ensureAllocDonut(symbols);
-      
-      setStatus("Fetching stock prices…");
-      let updated=0;
+
+      setStatus("Fetching NSE quotes…");
+      let updated=0, firstError=null;
       const returnMap = {};
 
-      for(const stock of PORTFOLIO){
-        const row = rowMap[stock.symbol];
+      // Fetch quotes with delay to avoid rate limiting
+      for(let i = 0; i < PORTFOLIO.length; i++){
+        const stock = PORTFOLIO[i];
+        const sym = stock.symbol;
+        const row = rowMap[sym];
         if(!row) continue;
 
-        const q = await fetchQuote(stock.symbol);
-        if(!q){
-          row.dayCell.textContent="No data";
-          continue;
+        try{
+          const q = await fetchQuote(sym);
+          
+          if(!q){
+            row.dayCell.textContent="No data";
+            row.dayCell.classList.remove("positive-return","negative-return");
+            // Add small delay between requests
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+          }
+          
+          const price=Number(q.c)||0;
+          const dayAbs=Number(q.d)||0;
+          const dayPct=Number(q.dp)||0;
+
+          row.priceCell.textContent=fmtMoney(price);
+          row.dayCell.textContent=`${dayAbs>=0?'+':''}${fmtMoney(Math.abs(dayAbs))} (${fmtPct(dayPct)})`;
+          row.dayCell.classList.toggle("positive-return",dayPct>=0);
+          row.dayCell.classList.toggle("negative-return",dayPct<0);
+
+          const qty=row.qty;
+          const avgCost=row.avgCost;
+          const currentValue=price*qty;
+          const overallReturnDollar=(price-avgCost)*qty;
+          const principal=avgCost*qty;
+          const overallReturnPct=principal>0?(overallReturnDollar/principal)*100:0;
+
+          row.currentValCell.textContent=fmtMoney(currentValue);
+          row.overallCell.textContent=`${fmtSignedMoney(overallReturnDollar)} (${fmtPct(overallReturnPct)})`;
+          row.overallCell.classList.toggle("positive-return",overallReturnDollar>=0);
+          row.overallCell.classList.toggle("negative-return",overallReturnDollar<0);
+
+          returnMap[sym]=overallReturnDollar;
+          updated++;
+          
+          // Update status progressively
+          setStatus(`Fetching NSE quotes… (${updated}/${PORTFOLIO.length})`);
+          
+          // Add small delay between requests
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        }catch(e){
+          if(!firstError) firstError=e;
+          row.dayCell.textContent=`Error`;
+          row.dayCell.classList.remove("positive-return","negative-return");
         }
-        
-        const price = q.c;
-        const dayAbs = q.d;
-        const dayPct = q.dp;
-
-        row.priceCell.textContent=fmtMoney(price);
-        row.dayCell.textContent=`${fmtSignedMoney(dayAbs)} (${fmtPct(dayPct)})`;
-        row.dayCell.classList.toggle("positive-return",dayPct>=0);
-        row.dayCell.classList.toggle("negative-return",dayPct<0);
-
-        const currentValue = price * stock.qty;
-        const overallReturn = (price - stock.avgCost) * stock.qty;
-        const overallReturnPct = (overallReturn / (stock.avgCost * stock.qty)) * 100;
-
-        row.currentValCell.textContent=fmtMoney(currentValue);
-        row.overallCell.textContent=`${fmtSignedMoney(overallReturn)} (${fmtPct(overallReturnPct)})`;
-        row.overallCell.classList.toggle("positive-return",overallReturn>=0);
-        row.overallCell.classList.toggle("negative-return",overallReturn<0);
-
-        returnMap[stock.symbol]=overallReturn;
-        updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`);
-        await new Promise(r => setTimeout(r, 200));
       }
 
-      // Update summary
-      let totalInvested=0,totalValue=0;
-      for(const stock of PORTFOLIO){
-        const row = rowMap[stock.symbol];
-        if(!row) continue;
-        totalInvested += stock.avgCost * stock.qty;
-        totalValue += parseMoney(row.currentValCell.textContent);
+      if(updated===0){
+        setStatus(firstError?`No data: ${firstError.message}. Check internet connection.`:"No data available.",true);
+        return;
       }
-      const totalReturn = totalValue - totalInvested;
-      const avgReturn = totalInvested>0 ? (totalReturn/totalInvested)*100 : 0;
+
+      // Totals
+      let totalInvested=0,totalValue=0,totalReturn=0;
+      document.querySelectorAll("tbody tr").forEach(tr=>{
+        const tds=tr.children;
+        const avgCost=parseFloat(tds[6].textContent.replace(/[^0-9.-]+/g,""))||0;
+        const qty=parseFloat(tds[7].textContent.replace(/[^0-9.-]+/g,""))||0;
+        const invested=avgCost*qty;
+        const currentValue=parseFloat(tds[3].textContent.replace(/[^0-9.-]+/g,""))||0;
+        const rowReturn=currentValue-invested;
+        totalInvested+=invested;
+        totalValue+=currentValue;
+        totalReturn+=rowReturn;
+      });
+      const averageReturn=totalInvested>0?(totalReturn/totalInvested)*100:0;
 
       document.getElementById('totalInvested').textContent=fmtMoney(totalInvested);
       document.getElementById('totalValue').textContent=fmtMoney(totalValue);
-      document.getElementById('totalValueNote').textContent=fmtSignedMoney(totalReturn);
-      document.getElementById('returnAmount').textContent=fmtSignedMoney(totalReturn);
-      document.getElementById('returnPercentage').textContent=fmtPct(avgReturn);
-      document.getElementById('averageReturn').textContent=fmtPct(avgReturn);
-      document.getElementById('positionsCount').textContent=updated;
-      document.getElementById('positionsCountNote').textContent=updated;
+      const noteEl=document.getElementById('totalValueNote');
+      if(noteEl){noteEl.textContent=(totalReturn>=0?'+':'-')+fmtMoney(Math.abs(totalReturn));}
+      const returnAmtEl=document.getElementById('returnAmount');
+      if(returnAmtEl){returnAmtEl.textContent=(totalReturn>=0?'+':'-')+fmtMoney(Math.abs(totalReturn));}
+      document.getElementById('returnPercentage').textContent=(averageReturn>=0?'+':'')+averageReturn.toFixed(2)+'%';
+      document.getElementById('averageReturn').textContent=averageReturn.toFixed(2)+'%';
 
-      updatedTimeEl.textContent=new Date().toLocaleTimeString();
-      setStatus(`Updated ${updated} stocks`);
+      const now=new Date();
+      updatedTimeEl.textContent=now.toLocaleTimeString();
+      setStatus(`Updated ${updated} of ${PORTFOLIO.length} symbols`);
 
-      updateReturnBars(symbols, returnMap);
-      updateAllocDonut(symbols, rowMap);
+      const updatedSymbols = PORTFOLIO.map(s=>s.symbol).filter(s=>s in returnMap);
+      updateReturnBars(updatedSymbols, returnMap);
+      updateAllocDonut(updatedSymbols);
     }
 
     document.addEventListener("DOMContentLoaded",()=>{
       initializeTable();
       refreshAll();
       setInterval(refreshAll, REFRESH_MS);
-      refreshBtn.addEventListener("click", refreshAll);
+      if(refreshBtn) refreshBtn.addEventListener("click", refreshAll);
     });
   </script>
 </body>

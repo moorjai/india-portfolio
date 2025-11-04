@@ -180,7 +180,8 @@
 
   <script>
     // ===== Config =====
-    const REFRESH_MS = 120000; // 2 minutes (Yahoo Finance has rate limits)
+    const REFRESH_MS = 120000; // 2 minutes
+    const API_BASE = 'https://nse-api-khaki.vercel.app'; // Free NSE API
 
     // Portfolio data from CSV
     const PORTFOLIO = [
@@ -216,7 +217,7 @@
       ABMKNO:'#FF5252',APARINDS:'#40C4FF',AZAD:'#00C853',AZTEC:'#7C4DFF',
       BATLIBOI:'#18FFFF',BCLIND:'#FFB300',BETA:'#FF6E40',BINNY:'#E91E63',
       BBOX:'#9C27B0',BLS:'#3F51B5',COSMICCRF:'#03A9F4',DANISH:'#00BCD4',
-      EIEL:'#009688',FRONTSP:'#4CAF50',HMEML:'#8BC34A',KLBRENG:'#CDDC39',
+      EIEL:'#009688',FRONTSP:'#4CAF50',HMEML:'#8BC34A','KLBRENG-B':'#CDDC39',
       KMEW:'#FFEB3B',KONSTELEC:'#FFC107',MACPOWER:'#FF9800',MARKSANS:'#FF5722',
       PENIND:'#795548',SHARDAMOTR:'#607D8B',SHIVALIK:'#F06292',SGLTL:'#BA68C8',
       SUMEETINDS:'#9575CD',TASTYBITE:'#7986CB'
@@ -298,38 +299,35 @@
       return map;
     }
 
-    // Yahoo Finance API for NSE stocks
+    // Free NSE API
     async function fetchQuote(sym){
       try {
-        // Use Yahoo Finance via query1.finance.yahoo.com
-        const ticker = `${sym}.NS`; // NSE suffix
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
+        // Use free NSE API with .NS suffix
+        const ticker = `${sym}.NS`;
+        const url = `${API_BASE}/stock?symbol=${ticker}&res=num`;
         
         const res = await fetch(url);
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        if(!res.ok) {
+          console.log(`API error for ${sym}: ${res.status}`);
+          return null;
+        }
         
         const data = await res.json();
         
-        if(!data.chart || !data.chart.result || data.chart.result.length === 0) {
+        if(!data || data.error || !data.currentPrice) {
+          console.log(`No data for ${sym}:`, data);
           return null;
         }
         
-        const result = data.chart.result[0];
-        const meta = result.meta;
-        
-        if(!meta || typeof meta.regularMarketPrice !== 'number') {
-          return null;
-        }
-        
-        const currentPrice = meta.regularMarketPrice;
-        const prevClose = meta.chartPreviousClose || meta.previousClose || currentPrice;
+        const currentPrice = parseFloat(data.currentPrice) || 0;
+        const prevClose = parseFloat(data.previousClose) || currentPrice;
         const change = currentPrice - prevClose;
         const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
         
         return {
-          c: currentPrice,      // current price
-          d: change,            // change $
-          dp: changePct         // change %
+          c: currentPrice,
+          d: change,
+          dp: changePct
         };
       } catch(e) {
         console.error(`Error fetching ${sym}:`, e);
@@ -552,7 +550,7 @@
       ensureAllocDonut(symbols);
 
       setStatus("Fetching NSE quotes…");
-      let updated=0, firstError=null;
+      let updated=0, failed=0, firstError=null;
       const returnMap = {};
 
       // Fetch quotes with delay to avoid rate limiting
@@ -568,8 +566,8 @@
           if(!q){
             row.dayCell.textContent="No data";
             row.dayCell.classList.remove("positive-return","negative-return");
-            // Add small delay between requests
-            await new Promise(resolve => setTimeout(resolve, 100));
+            failed++;
+            await new Promise(resolve => setTimeout(resolve, 200));
             continue;
           }
           
@@ -597,21 +595,19 @@
           returnMap[sym]=overallReturnDollar;
           updated++;
           
-          // Update status progressively
           setStatus(`Fetching NSE quotes… (${updated}/${PORTFOLIO.length})`);
-          
-          // Add small delay between requests
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
           
         }catch(e){
           if(!firstError) firstError=e;
           row.dayCell.textContent=`Error`;
           row.dayCell.classList.remove("positive-return","negative-return");
+          failed++;
         }
       }
 
       if(updated===0){
-        setStatus(firstError?`No data: ${firstError.message}. Check internet connection.`:"No data available.",true);
+        setStatus(firstError?`Failed to fetch data: ${firstError.message}`:"No data available. API may be down.",true);
         return;
       }
 
@@ -641,7 +637,11 @@
 
       const now=new Date();
       updatedTimeEl.textContent=now.toLocaleTimeString();
-      setStatus(`Updated ${updated} of ${PORTFOLIO.length} symbols`);
+      
+      const statusMsg = failed > 0 
+        ? `Updated ${updated} symbols (${failed} failed)` 
+        : `Updated ${updated} of ${PORTFOLIO.length} symbols`;
+      setStatus(statusMsg, failed > 0);
 
       const updatedSymbols = PORTFOLIO.map(s=>s.symbol).filter(s=>s in returnMap);
       updateReturnBars(updatedSymbols, returnMap);

@@ -30,6 +30,12 @@
 
     .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
     .status.error{color:#f9c74f;}
+    
+    .debug{background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-family:monospace;font-size:0.85rem;max-height:150px;overflow-y:auto;}
+    .debug-line{margin:2px 0;}
+    .debug-line.success{color:#31c920;}
+    .debug-line.error{color:#e33232;}
+    .debug-line.info{color:#4cc9f0;}
 
     .portfolio-summary{background:#1a1a1a;border-radius:12px;padding:22px;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .summary-title{font-size:1.5rem;margin-bottom:14px;color:var(--success);display:flex;align-items:center;gap:10px;}
@@ -44,7 +50,6 @@
     .panel{background:#1a1a1a;border-radius:12px;box-shadow:var(--card-shadow);padding:18px;margin-bottom:20px;}
     .panel h3{font-size:1.1rem;margin-bottom:8px;color:#ddd;}
     .chart-wrap{position:relative;height:260px;}
-    #returnBarChart{width:100%;height:100%;}
 
     .portfolio-table{background:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .table-header{background:linear-gradient(135deg,var(--secondary),var(--primary));color:#fff;padding:14px 18px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
@@ -92,6 +97,8 @@
     </header>
 
     <div id="status" class="status">Initializing…</div>
+    
+    <div id="debug" class="debug" style="display:block;"></div>
 
     <div class="portfolio-summary">
       <h2 class="summary-title">Portfolio Overview</h2>
@@ -219,6 +226,16 @@
     const statusEl = document.getElementById("status");
     const updatedTimeEl = document.getElementById("updatedTime");
     const refreshBtn = document.getElementById("refreshBtn");
+    const debugEl = document.getElementById("debug");
+
+    function addDebug(msg, type='info'){
+      const line = document.createElement('div');
+      line.className = `debug-line ${type}`;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      debugEl.appendChild(line);
+      debugEl.scrollTop = debugEl.scrollHeight;
+      console.log(msg);
+    }
 
     const PASSPHRASE = "2104";
     const SESSION_KEY = "gate_ok_v1";
@@ -281,67 +298,71 @@
       return map;
     }
 
-    // Multi-API fallback with BSE and NSE support
+    // Simplified fetch with detailed debugging
     async function fetchQuote(sym){
-      // Try multiple CORS proxies and both BSE (.BO) and NSE (.NS)
-      const proxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?'
+      addDebug(`Fetching ${sym}...`, 'info');
+      
+      const attempts = [
+        {suffix: '.BO', exchange: 'BSE'},
+        {suffix: '.NS', exchange: 'NSE'}
       ];
       
-      const suffixes = ['.BO', '.NS']; // Try BSE first, then NSE
-      
-      for(const suffix of suffixes){
-        for(const proxy of proxies){
-          try {
-            const ticker = `${sym}${suffix}`;
-            const apiUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
-            const url = proxy + apiUrl;
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-            
-            const res = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            if(!res.ok) continue;
-            
-            const data = await res.json();
-            
-            if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice) continue;
-            
-            const meta = data.chart.result[0].meta;
-            const currentPrice = meta.regularMarketPrice;
-            const prevClose = meta.chartPreviousClose || meta.previousClose || currentPrice;
-            const change = currentPrice - prevClose;
-            const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
-            
-            console.log(`✓ ${sym}: Found on ${suffix} via ${proxy.substring(0,30)}`);
-            return {c: currentPrice, d: change, dp: changePct};
-          } catch(e) {
-            continue; // Try next combination
+      for(const {suffix, exchange} of attempts){
+        try {
+          const ticker = `${sym}${suffix}`;
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
+          
+          addDebug(`Trying ${ticker} on ${exchange}`, 'info');
+          
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Mozilla/5.0'
+            }
+          });
+          
+          addDebug(`${ticker}: HTTP ${res.status}`, res.ok ? 'info' : 'error');
+          
+          if(!res.ok) continue;
+          
+          const text = await res.text();
+          addDebug(`${ticker}: Got ${text.length} chars`, 'info');
+          
+          const data = JSON.parse(text);
+          
+          if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice){
+            addDebug(`${ticker}: No price data in response`, 'error');
+            continue;
           }
+          
+          const meta = data.chart.result[0].meta;
+          const price = meta.regularMarketPrice;
+          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+          const change = price - prevClose;
+          const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+          
+          addDebug(`${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)`, 'success');
+          
+          return {c: price, d: change, dp: changePct};
+          
+        } catch(e) {
+          addDebug(`${sym}${suffix}: ${e.message}`, 'error');
         }
       }
       
-      console.error(`✗ ${sym}: Not found on any API`);
+      addDebug(`${sym}: NOT FOUND on any exchange`, 'error');
       return null;
     }
 
-    let returnBarChart;
+    let returnBarChart, allocDonutChart;
+    
     function ensureReturnBar(symbols){
       if(!returnBarChart){
         returnBarChart = new Chart(document.getElementById('returnBarChart').getContext('2d'), {
           type:'bar',
           data:{labels:symbols,datasets:[{label:'Overall Return (₹)',data:[],backgroundColor:[],barPercentage:0.6,borderRadius:6}]},
-          options:{
-            responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',
-            scales:{
-              x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},
-              y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}
-            },
-            plugins:{legend:{labels:{color:'#fff'}}}
-          }
+          options:{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',scales:{x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}},plugins:{legend:{labels:{color:'#fff'}}}}
         });
       }
     }
@@ -375,23 +396,12 @@
       }
     };
 
-    let allocDonutChart;
     function ensureAllocDonut(symbols){
       if(!allocDonutChart){
         allocDonutChart = new Chart(document.getElementById('allocDonutChart').getContext('2d'), {
           type:'doughnut',
-          data:{
-            labels:symbols,
-            datasets:[{label:'% of Portfolio',data:[],backgroundColor:symbols.map(s=>SYMBOL_COLORS[s]||'#888'),borderColor:'#111',borderWidth:1}]
-          },
-          options:{
-            responsive:true,maintainAspectRatio:false,cutout:'60%',
-            plugins:{
-              legend:{display:true,position:'right',labels:{color:'#fff',font:{size:10}}},
-              tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${(ctx.raw*100).toFixed(2)}%`}},
-              donutCenterText:{totalValue:'₹0.00',totalReturn:'+₹0.00',returnColor:'#31c920'}
-            }
-          },
+          data:{labels:symbols,datasets:[{label:'% of Portfolio',data:[],backgroundColor:symbols.map(s=>SYMBOL_COLORS[s]||'#888'),borderColor:'#111',borderWidth:1}]},
+          options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:true,position:'right',labels:{color:'#fff',font:{size:10}}},tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${(ctx.raw*100).toFixed(2)}%`}},donutCenterText:{totalValue:'₹0.00',totalReturn:'+₹0.00',returnColor:'#31c920'}}},
           plugins:[donutCenterText]
         });
       }
@@ -402,7 +412,6 @@
       const total = vals.reduce((a,b)=>a+b,0);
       const weights = total > 0 ? vals.map(v=> v/total) : vals.map(()=>0);
       allocDonutChart.data.datasets[0].data = weights;
-      
       const totalInvested = symbols.reduce((sum,s)=> sum + (rows[s]?.invested || 0), 0);
       const totalReturn = total - totalInvested;
       allocDonutChart.options.plugins.donutCenterText.totalValue = fmtMoney(total);
@@ -412,12 +421,15 @@
     }
 
     async function refreshAll(){
+      debugEl.innerHTML = '';
+      addDebug('Starting refresh...', 'info');
+      
       const rowMap = mapRowsBySymbol();
       const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
       ensureReturnBar(symbols);
       ensureAllocDonut(symbols);
       
-      setStatus("Fetching BSE/NSE stock prices…");
+      setStatus("Fetching stock prices…");
       let updated=0;
       const returnMap = {};
 
@@ -426,7 +438,9 @@
         if(!row) continue;
 
         const q = await fetchQuote(stock.symbol);
+        
         if(!q){
+          row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
           setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`);
           continue;
@@ -453,10 +467,10 @@
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
         setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`);
-        await new Promise(r => setTimeout(r, 300));
       }
 
-      // Update summary
+      addDebug(`Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, updated > 0 ? 'success' : 'error');
+
       let totalInvested=0,totalValue=0;
       for(const stock of PORTFOLIO){
         const row = rowMap[stock.symbol.toUpperCase()];

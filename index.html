@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root{
-      --primary:#ff4d00; --secondary:#ffae00; --success:#a1a1a1; --danger:#e33232;
+      --primary:#a4fca7; --secondary:#d479c0; --success:#a1a1a1; --danger:#e33232;
       --warning:#f9c74f; --light:#f8f9fa; --dark:#212529; --gray:#6c757d;
       --border:#dee2e6; --card-shadow:0 4px 6px rgba(0,0,0,0.05); --transition:all 0.3s ease;
       --positive:#31c920;
@@ -560,7 +560,7 @@
         if(!q){
           row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
-          setStatus(`Fetching… please be patient Papa (${updated}/${PORTFOLIO.length})`, '');
+          setStatus(`Fetching… please be patient Papa <3 (${updated}/${PORTFOLIO.length})`, '');
           await new Promise(r => setTimeout(r, 500));
           continue;
         }
@@ -591,7 +591,7 @@
 
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
-        setStatus(`Fetching… please be patient Papa(${updated}/${PORTFOLIO.length})`, '');
+        setStatus(`Fetching… please be patient Papa <3 (${updated}/${PORTFOLIO.length})`, '');
         await new Promise(r => setTimeout(r, 500));
       }
 

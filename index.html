@@ -31,12 +31,6 @@
     .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
     .status.error{color:#f9c74f;}
     .status.success{color:#31c920;}
-    
-    .debug{background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-family:monospace;font-size:0.85rem;max-height:150px;overflow-y:auto;}
-    .debug-line{margin:2px 0;}
-    .debug-line.success{color:#31c920;}
-    .debug-line.error{color:#e33232;}
-    .debug-line.info{color:#4cc9f0;}
 
     .portfolio-summary{background:#1a1a1a;border-radius:12px;padding:22px;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .summary-title{font-size:1.5rem;margin-bottom:14px;color:var(--success);display:flex;align-items:center;gap:10px;}
@@ -98,8 +92,6 @@
     </header>
 
     <div id="status" class="status">Initializing…</div>
-    
-    <div id="debug" class="debug"></div>
 
     <div class="portfolio-summary">
       <h2 class="summary-title">Portfolio Overview</h2>
@@ -183,7 +175,13 @@
   </div>
 
   <script>
-    const REFRESH_MS = 300000; // 5 minutes (longer to avoid rate limits)
+    const REFRESH_MS = 120000; // 2 minutes
+
+    // Map BSE codes for stocks that need them
+    const BSE_CODE_MAP = {
+      'BINNY': '514215',
+      'DANISH': '83611'
+    };
 
     const PORTFOLIO = [
       {symbol:"ABMKNO",avgCost:306.07,qty:1377},
@@ -227,15 +225,6 @@
     const statusEl = document.getElementById("status");
     const updatedTimeEl = document.getElementById("updatedTime");
     const refreshBtn = document.getElementById("refreshBtn");
-    const debugEl = document.getElementById("debug");
-
-    function addDebug(msg, type='info'){
-      const line = document.createElement('div');
-      line.className = `debug-line ${type}`;
-      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      debugEl.appendChild(line);
-      debugEl.scrollTop = debugEl.scrollHeight;
-    }
 
     const PASSPHRASE = "2104";
     const SESSION_KEY = "gate_ok_v1";
@@ -298,44 +287,38 @@
       return map;
     }
 
-    // Slower fetching with longer delays to avoid rate limits
+    // Fetch with BSE code support and faster speed
     async function fetchQuote(sym){
-      const attempts = [
-        {suffix: '.BO', exchange: 'BSE'},
-        {suffix: '.NS', exchange: 'NSE'}
-      ];
+      // Check if we need to use BSE code
+      const bseCode = BSE_CODE_MAP[sym.toUpperCase()];
       
-      for(const {suffix, exchange} of attempts){
+      const attempts = bseCode 
+        ? [{suffix: `.BO`, code: bseCode}, {suffix: '.BO', code: sym}, {suffix: '.NS', code: sym}]
+        : [{suffix: '.BO', code: sym}, {suffix: '.NS', code: sym}];
+      
+      for(const {suffix, code} of attempts){
         try {
-          const ticker = `${sym}${suffix}`;
+          const ticker = `${code}${suffix}`;
           const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
           const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
           
           const res = await fetch(proxyUrl);
           
-          if(!res.ok){
-            continue;
-          }
+          if(!res.ok) continue;
           
           const proxyData = await res.json();
           
-          if(!proxyData.contents){
-            continue;
-          }
+          if(!proxyData.contents) continue;
           
           const data = JSON.parse(proxyData.contents);
           
-          if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice){
-            continue;
-          }
+          if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice) continue;
           
           const meta = data.chart.result[0].meta;
           const price = meta.regularMarketPrice;
           const prevClose = meta.chartPreviousClose || meta.previousClose || price;
           const change = price - prevClose;
           const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
-          
-          addDebug(`✓ ${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)`, 'success');
           
           return {c: price, d: change, dp: changePct};
           
@@ -344,7 +327,6 @@
         }
       }
       
-      addDebug(`${sym}: NOT FOUND`, 'error');
       return null;
     }
 
@@ -414,20 +396,16 @@
     }
 
     async function refreshAll(){
-      debugEl.innerHTML = '';
-      addDebug('Starting refresh (slow mode to avoid rate limits)...', 'info');
-      
       const rowMap = mapRowsBySymbol();
       const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
       ensureReturnBar(symbols);
       ensureAllocDonut(symbols);
       
-      setStatus("Fetching stock prices (this will take ~2 minutes)...", '');
+      setStatus("Fetching stock prices...", '');
       let updated=0;
       const returnMap = {};
 
-      for(let i = 0; i < PORTFOLIO.length; i++){
-        const stock = PORTFOLIO[i];
+      for(const stock of PORTFOLIO){
         const row = rowMap[stock.symbol.toUpperCase()];
         if(!row) continue;
 
@@ -436,9 +414,8 @@
         if(!q){
           row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
-          setStatus(`Fetching… (${updated}/${PORTFOLIO.length}) - ${Math.ceil((i+1)/PORTFOLIO.length*100)}%`, '');
-          // Longer delay after failed attempts
-          await new Promise(r => setTimeout(r, 2000));
+          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+          await new Promise(r => setTimeout(r, 500));
           continue;
         }
         
@@ -462,13 +439,9 @@
 
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length}) - ${Math.ceil((i+1)/PORTFOLIO.length*100)}%`, '');
-        
-        // 3 second delay between successful requests to avoid rate limiting
-        await new Promise(r => setTimeout(r, 3000));
+        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+        await new Promise(r => setTimeout(r, 500));
       }
-
-      addDebug(`Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, updated > 0 ? 'success' : 'error');
 
       let totalInvested=0,totalValue=0;
       for(const stock of PORTFOLIO){

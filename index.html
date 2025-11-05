@@ -48,7 +48,7 @@
     
     /* Enhanced donut chart styling */
     #allocDonutChart{
-      filter:drop-shadow(0 0 20px rgba(255,77,0,0.3));
+      filter:drop-shadow(0 0 20px rgba(61,61,61,0.3));
     }
 
     .portfolio-table{background:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:var(--card-shadow);margin-bottom:20px;}
@@ -429,7 +429,7 @@
         
         // Add glow effect
         ctx.save();
-        ctx.shadowColor = options.returnColor || '#31c920';
+        ctx.shadowColor = options.returnColor || '#000000';
         ctx.shadowBlur = 20;
         
         ctx.textAlign = 'center';
@@ -467,9 +467,9 @@
               label:'% of Portfolio',
               data:[],
               backgroundColor:gradients,
-              borderColor:'rgba(0,0,0,0.8)',
-              borderWidth:3,
-              hoverOffset:15,
+              borderColor:'rgba(0,0,0,0.1)',
+              borderWidth:1,
+              hoverOffset:25,
               hoverBorderWidth:4
             }]
           },

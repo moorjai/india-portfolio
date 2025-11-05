@@ -549,7 +549,7 @@
         if(!q){
           row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
-          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+          setStatus(`Fetching… (${updated}/${PORTFOLIO.length}).. please be patient Papa <3`, '');
           await new Promise(r => setTimeout(r, 500));
           continue;
         }

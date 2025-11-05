@@ -580,7 +580,7 @@
 
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})... please be patient Papa <3`, '');
         await new Promise(r => setTimeout(r, 500));
       }
 

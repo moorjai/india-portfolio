@@ -30,6 +30,7 @@
 
     .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
     .status.error{color:#f9c74f;}
+    .status.success{color:#31c920;}
     
     .debug{background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-family:monospace;font-size:0.85rem;max-height:150px;overflow-y:auto;}
     .debug-line{margin:2px 0;}
@@ -98,7 +99,7 @@
 
     <div id="status" class="status">Initializing…</div>
     
-    <div id="debug" class="debug" style="display:block;"></div>
+    <div id="debug" class="debug"></div>
 
     <div class="portfolio-summary">
       <h2 class="summary-title">Portfolio Overview</h2>
@@ -234,7 +235,6 @@
       line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
       debugEl.appendChild(line);
       debugEl.scrollTop = debugEl.scrollHeight;
-      console.log(msg);
     }
 
     const PASSPHRASE = "2104";
@@ -251,7 +251,7 @@
     document.getElementById("gateBtn").addEventListener("click",tryOpen);
     document.getElementById("gateInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")tryOpen();});
 
-    function setStatus(msg,isError=false){statusEl.textContent=msg;statusEl.classList.toggle("error",!!isError);}
+    function setStatus(msg,type=''){statusEl.textContent=msg;statusEl.className=`status ${type}`;}
     function fmtMoney(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
     function fmtPct(n){const s=n>=0?'+':'';return `${s}${(Number(n)||0).toFixed(2)}%`;}
     function fmtSignedMoney(n){const s=n>=0?'+':'-';return `${s}${fmtMoney(Math.abs(n))}`;}
@@ -298,7 +298,7 @@
       return map;
     }
 
-    // Simplified fetch with detailed debugging
+    // Using working CORS proxy with Yahoo Finance
     async function fetchQuote(sym){
       addDebug(`Fetching ${sym}...`, 'info');
       
@@ -310,29 +310,29 @@
       for(const {suffix, exchange} of attempts){
         try {
           const ticker = `${sym}${suffix}`;
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
+          const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
+          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
           
-          addDebug(`Trying ${ticker} on ${exchange}`, 'info');
+          addDebug(`Trying ${ticker} via CORS proxy`, 'info');
           
-          const res = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Mozilla/5.0'
-            }
-          });
+          const res = await fetch(proxyUrl);
           
-          addDebug(`${ticker}: HTTP ${res.status}`, res.ok ? 'info' : 'error');
+          if(!res.ok){
+            addDebug(`${ticker}: Proxy returned ${res.status}`, 'error');
+            continue;
+          }
           
-          if(!res.ok) continue;
+          const proxyData = await res.json();
           
-          const text = await res.text();
-          addDebug(`${ticker}: Got ${text.length} chars`, 'info');
+          if(!proxyData.contents){
+            addDebug(`${ticker}: No contents from proxy`, 'error');
+            continue;
+          }
           
-          const data = JSON.parse(text);
+          const data = JSON.parse(proxyData.contents);
           
           if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice){
-            addDebug(`${ticker}: No price data in response`, 'error');
+            addDebug(`${ticker}: No price in Yahoo response`, 'error');
             continue;
           }
           
@@ -342,7 +342,7 @@
           const change = price - prevClose;
           const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
           
-          addDebug(`${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)`, 'success');
+          addDebug(`✓ ${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)`, 'success');
           
           return {c: price, d: change, dp: changePct};
           
@@ -351,7 +351,7 @@
         }
       }
       
-      addDebug(`${sym}: NOT FOUND on any exchange`, 'error');
+      addDebug(`${sym}: NOT FOUND`, 'error');
       return null;
     }
 
@@ -422,14 +422,14 @@
 
     async function refreshAll(){
       debugEl.innerHTML = '';
-      addDebug('Starting refresh...', 'info');
+      addDebug('Starting refresh with CORS proxy...', 'info');
       
       const rowMap = mapRowsBySymbol();
       const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
       ensureReturnBar(symbols);
       ensureAllocDonut(symbols);
       
-      setStatus("Fetching stock prices…");
+      setStatus("Fetching stock prices via proxy...", '');
       let updated=0;
       const returnMap = {};
 
@@ -442,7 +442,7 @@
         if(!q){
           row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
-          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`);
+          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
           continue;
         }
         
@@ -466,7 +466,10 @@
 
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`);
+        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+        
+        // Small delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 500));
       }
 
       addDebug(`Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, updated > 0 ? 'success' : 'error');
@@ -491,7 +494,7 @@
       document.getElementById('positionsCountNote').textContent=updated;
 
       updatedTimeEl.textContent=new Date().toLocaleTimeString();
-      setStatus(`✓ Updated ${updated} stocks`);
+      setStatus(`✓ Updated ${updated} stocks`, 'success');
 
       updateReturnBars(symbols, returnMap);
       updateAllocDonut(symbols, rowMap);

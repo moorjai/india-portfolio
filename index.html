@@ -24,8 +24,8 @@
     .header-content{display:flex;justify-content:space-between;align-items:center;}
     .logo{font-size:1.8rem;font-weight:700;}
     .toolbar{display:flex;gap:10px;align-items:center;}
-    .btn{background:#2a2a2a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 12px;cursor:pointer;}
-    .btn:hover{background:#333;}
+    .btn{background:#2a2a2a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 12px;cursor:pointer;transition:var(--transition);}
+    .btn:hover{background:#333;transform:translateY(-2px);}
     .date{color:#eee;font-size:0.95rem;}
 
     .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
@@ -45,12 +45,21 @@
     .panel{background:#1a1a1a;border-radius:12px;box-shadow:var(--card-shadow);padding:18px;margin-bottom:20px;}
     .panel h3{font-size:1.1rem;margin-bottom:8px;color:#ddd;}
     .chart-wrap{position:relative;height:260px;}
+    
+    /* Enhanced donut chart styling */
+    #allocDonutChart{
+      filter:drop-shadow(0 0 20px rgba(255,77,0,0.3));
+    }
 
     .portfolio-table{background:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .table-header{background:linear-gradient(135deg,var(--secondary),var(--primary));color:#fff;padding:14px 18px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
     .table-container{overflow-x:auto;}
     table{width:100%;border-collapse:collapse;}
-    th{text-align:left;padding:12px 16px;font-weight:600;color:#fff;background:rgba(255,255,255,0.1);}
+    th{text-align:left;padding:12px 16px;font-weight:600;color:#fff;background:rgba(255,255,255,0.1);cursor:pointer;user-select:none;position:relative;transition:background 0.2s;}
+    th:hover{background:rgba(255,255,255,0.15);}
+    th.sortable::after{content:'⇅';margin-left:8px;opacity:0.5;font-size:0.9em;}
+    th.sort-asc::after{content:'↑';opacity:1;color:#31c920;}
+    th.sort-desc::after{content:'↓';opacity:1;color:#31c920;}
     td{padding:12px 16px;border-bottom:1px solid #333;font-size:0.9rem;}
     tr:last-child td{border-bottom:none;}
     tr:hover{background-color:rgba(67,97,238,0.1);}
@@ -138,20 +147,20 @@
     <div class="portfolio-table">
       <div class="table-header">
         <div>Holdings</div>
-        <div>Market Data (BSE/NSE)</div>
+        <div>Market Data (BSE/NSE) • Click column headers to sort</div>
       </div>
       <div class="table-container">
-        <table>
+        <table id="portfolioTable">
           <thead>
             <tr>
-              <th>Symbol</th>
-              <th>Price</th>
-              <th>1D Return</th>
-              <th>Current Value</th>
-              <th>Overall Return</th>
-              <th>Total Invested</th>
-              <th>Avg Cost</th>
-              <th>Quantity</th>
+              <th class="sortable" data-column="0" data-type="text">Symbol</th>
+              <th class="sortable" data-column="1" data-type="number">Price</th>
+              <th class="sortable" data-column="2" data-type="number">1D Return</th>
+              <th class="sortable" data-column="3" data-type="number">Current Value</th>
+              <th class="sortable" data-column="4" data-type="number">Overall Return</th>
+              <th class="sortable" data-column="5" data-type="number">Total Invested</th>
+              <th class="sortable" data-column="6" data-type="number">Avg Cost</th>
+              <th class="sortable" data-column="7" data-type="number">Quantity</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -178,12 +187,10 @@
   <script>
     const REFRESH_MS = 120000;
 
-    // Special ticker for DANISH (SME stock)
     const TICKER_MAP = {
       'DANISH': 'DANISH-SM.NS'
     };
 
-    // Hardcoded data for BINNY (suspended stock - last traded ₹145.50)
     const HARDCODED_PRICES = {
       'BINNY': {
         price: 145.50,
@@ -199,9 +206,9 @@
       {symbol:"AZAD",avgCost:1571.61,qty:3393},
       {symbol:"AZTEC",avgCost:98.51,qty:9000},
       {symbol:"BATLIBOI",avgCost:182.51,qty:4797},
-      {symbol:"BCLIND",avgCost:46.15,qty:7614},
+      {symbol:"BCLIND",avgCost:4615,qty:7614},
       {symbol:"BETA",avgCost:1914.98,qty:155},
-      {symbol:"BINNY",avgCost:157.71,qty:26836},
+      {symbol:"BINNY",avgCost:15771,qty:26836},
       {symbol:"BBOX",avgCost:279.41,qty:2052},
       {symbol:"BLS",avgCost:400.2,qty:3240},
       {symbol:"COSMICCRF",avgCost:1313.69,qty:9200},
@@ -209,15 +216,15 @@
       {symbol:"EIEL",avgCost:284.9,qty:7974},
       {symbol:"FRONTSP",avgCost:743.72,qty:3949},
       {symbol:"HMEML",avgCost:74.33,qty:25600},
-      {symbol:"KLBRENG-B",avgCost:374.18,qty:50940},
+      {symbol:"KLBRENG-B",avgCost:37418,qty:50940},
       {symbol:"KMEW",avgCost:451.2,qty:44109},
-      {symbol:"KONSTELEC",avgCost:146.10,qty:30000},
+      {symbol:"KONSTELEC",avgCost:14610,qty:30000},
       {symbol:"MACPOWER",avgCost:1056.28,qty:2862},
-      {symbol:"MARKSANS",avgCost:257.18,qty:504},
+      {symbol:"MARKSANS",avgCost:25718,qty:504},
       {symbol:"PENIND",avgCost:166.76,qty:17082},
       {symbol:"SHARDAMOTR",avgCost:434.66,qty:999},
       {symbol:"SHIVALIK",avgCost:624.84,qty:594},
-      {symbol:"SGLTL",avgCost:177.14,qty:62820},
+      {symbol:"SGLTL",avgCost:17714,qty:62820},
       {symbol:"SUMEETINDS",avgCost:19.04,qty:56520},
       {symbol:"TASTYBITE",avgCost:10633.68,qty:59}
     ];
@@ -274,6 +281,60 @@
         `;
         tbody.appendChild(tr);
       });
+      initializeTableSort();
+    }
+
+    // Table sorting functionality
+    let currentSort = {column: null, direction: 'asc'};
+    
+    function initializeTableSort(){
+      const headers = document.querySelectorAll('#portfolioTable th.sortable');
+      headers.forEach(header => {
+        header.addEventListener('click', () => {
+          const column = parseInt(header.dataset.column);
+          const type = header.dataset.type;
+          
+          // Toggle direction
+          if(currentSort.column === column){
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+          } else {
+            currentSort.column = column;
+            currentSort.direction = 'asc';
+          }
+          
+          sortTable(column, type, currentSort.direction);
+          updateSortIndicators(header);
+        });
+      });
+    }
+    
+    function sortTable(columnIndex, type, direction){
+      const tbody = document.getElementById('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      
+      rows.sort((a, b) => {
+        let aVal = a.cells[columnIndex].textContent;
+        let bVal = b.cells[columnIndex].textContent;
+        
+        if(type === 'number'){
+          aVal = parseMoney(aVal);
+          bVal = parseMoney(bVal);
+          return direction === 'asc' ? aVal - bVal : bVal - aVal;
+        } else {
+          return direction === 'asc' 
+            ? aVal.localeCompare(bVal) 
+            : bVal.localeCompare(aVal);
+        }
+      });
+      
+      rows.forEach(row => tbody.appendChild(row));
+    }
+    
+    function updateSortIndicators(activeHeader){
+      document.querySelectorAll('#portfolioTable th.sortable').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+      });
+      activeHeader.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
     }
 
     function mapRowsBySymbol(){
@@ -298,15 +359,12 @@
     }
 
     async function fetchQuote(sym){
-      // Check if we have hardcoded data
       const hardcoded = HARDCODED_PRICES[sym.toUpperCase()];
       if(hardcoded){
         return {c: hardcoded.price, d: hardcoded.change, dp: hardcoded.changePct, note: hardcoded.note};
       }
 
-      // Check for special ticker
       const specialTicker = TICKER_MAP[sym.toUpperCase()];
-      
       const attempts = specialTicker 
         ? [{ticker: specialTicker}]
         : [{ticker: `${sym}.BO`}, {ticker: `${sym}.NS`}];
@@ -336,7 +394,6 @@
           continue;
         }
       }
-      
       return null;
     }
 
@@ -347,7 +404,7 @@
         returnBarChart = new Chart(document.getElementById('returnBarChart').getContext('2d'), {
           type:'bar',
           data:{labels:symbols,datasets:[{label:'Overall Return (₹)',data:[],backgroundColor:[],barPercentage:0.6,borderRadius:6}]},
-          options:{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',scales:{x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}},plugins:{legend:{labels:{color:'#fff'}}}}
+          options:{responsive:true,maintainAspectRatio:false,animation:{duration:800,easing:'easeInOutQuart'},indexAxis:'y',scales:{x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}},plugins:{legend:{labels:{color:'#fff'}}}}
         });
       }
     }
@@ -358,9 +415,10 @@
       returnBarChart.data.labels = symbols;
       returnBarChart.data.datasets[0].data = data;
       returnBarChart.data.datasets[0].backgroundColor = colors;
-      returnBarChart.update('none');
+      returnBarChart.update();
     }
 
+    // Enhanced donut chart with gradient and animation
     const donutCenterText = {
       id: 'donutCenterText',
       afterDraw(chart, args, options){
@@ -368,25 +426,94 @@
         if(!chartArea) return;
         const centerX = (chartArea.left + chartArea.right)/2;
         const centerY = (chartArea.top + chartArea.bottom)/2;
+        
+        // Add glow effect
         ctx.save();
+        ctx.shadowColor = options.returnColor || '#31c920';
+        ctx.shadowBlur = 20;
+        
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff';
-        ctx.font = '600 18px Inter';
-        ctx.fillText(options.totalValue || '₹0.00', centerX, centerY - 8);
+        ctx.font = '600 20px Inter';
+        ctx.fillText(options.totalValue || '₹0.00', centerX, centerY - 10);
+        
+        ctx.shadowBlur = 15;
         ctx.fillStyle = options.returnColor || '#31c920';
-        ctx.font = '600 12px Inter';
-        ctx.fillText(options.totalReturn || '+₹0.00', centerX, centerY + 16);
+        ctx.font = '700 14px Inter';
+        ctx.fillText(options.totalReturn || '+₹0.00', centerX, centerY + 18);
         ctx.restore();
       }
     };
 
     function ensureAllocDonut(symbols){
       if(!allocDonutChart){
-        allocDonutChart = new Chart(document.getElementById('allocDonutChart').getContext('2d'), {
+        const ctx = document.getElementById('allocDonutChart').getContext('2d');
+        
+        // Create gradient colors for each segment
+        const gradients = symbols.map((s, i) => {
+          const baseColor = SYMBOL_COLORS[s] || '#888';
+          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+          gradient.addColorStop(0, baseColor);
+          gradient.addColorStop(1, baseColor + '80'); // Add transparency
+          return gradient;
+        });
+        
+        allocDonutChart = new Chart(ctx, {
           type:'doughnut',
-          data:{labels:symbols,datasets:[{label:'% of Portfolio',data:[],backgroundColor:symbols.map(s=>SYMBOL_COLORS[s]||'#888'),borderColor:'#111',borderWidth:1}]},
-          options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:true,position:'right',labels:{color:'#fff',font:{size:10}}},tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${(ctx.raw*100).toFixed(2)}%`}},donutCenterText:{totalValue:'₹0.00',totalReturn:'+₹0.00',returnColor:'#31c920'}}},
+          data:{
+            labels:symbols,
+            datasets:[{
+              label:'% of Portfolio',
+              data:[],
+              backgroundColor:gradients,
+              borderColor:'rgba(0,0,0,0.8)',
+              borderWidth:3,
+              hoverOffset:15,
+              hoverBorderWidth:4
+            }]
+          },
+          options:{
+            responsive:true,
+            maintainAspectRatio:false,
+            cutout:'65%',
+            animation:{
+              animateRotate:true,
+              animateScale:true,
+              duration:1200,
+              easing:'easeInOutQuart'
+            },
+            plugins:{
+              legend:{
+                display:true,
+                position:'right',
+                labels:{
+                  color:'#fff',
+                  font:{size:11,weight:'500'},
+                  padding:12,
+                  usePointStyle:true,
+                  pointStyle:'circle'
+                }
+              },
+              tooltip:{
+                backgroundColor:'rgba(0,0,0,0.9)',
+                padding:12,
+                titleFont:{size:14,weight:'600'},
+                bodyFont:{size:13},
+                callbacks:{
+                  label:(ctx)=>{
+                    const pct = (ctx.raw*100).toFixed(2);
+                    return `${ctx.label}: ${pct}%`;
+                  }
+                }
+              },
+              donutCenterText:{
+                totalValue:'₹0.00',
+                totalReturn:'+₹0.00',
+                returnColor:'#31c920'
+              }
+            }
+          },
           plugins:[donutCenterText]
         });
       }
@@ -402,7 +529,7 @@
       allocDonutChart.options.plugins.donutCenterText.totalValue = fmtMoney(total);
       allocDonutChart.options.plugins.donutCenterText.totalReturn = fmtSignedMoney(totalReturn);
       allocDonutChart.options.plugins.donutCenterText.returnColor = totalReturn>=0 ? '#31c920' : '#e33232';
-      allocDonutChart.update('none');
+      allocDonutChart.update();
     }
 
     async function refreshAll(){

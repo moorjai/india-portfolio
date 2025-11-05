@@ -75,19 +75,31 @@
       .chart-wrap{height:220px;}
     }
 
-    #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;color:#fff;font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,sans-serif;}
-    .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
+    #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;}
+    .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);color:#fff;}
     .gate-card h2{margin:0 0 10px;font-size:1.25rem;}
     .gate-card p{margin:0 0 14px;color:#bdbdbd;font-size:0.95rem;}
     .gate-row{display:flex;gap:10px;}
     .gate-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f14;color:#fff;outline:none;font-size:1rem;}
     .gate-row button{padding:12px 14px;border-radius:10px;border:1px solid #333;background:#2a2a2a;color:#fff;cursor:pointer;font-weight:600;}
-    .shake{animation:shake 180ms linear 0s 2;}
-    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}100%{transform:translateX(0)}}
+    .gate-row button:hover{background:#333;}
+    .shake{animation:shake 180ms linear;}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}}
   </style>
 </head>
 <body>
-  <div class="container">
+  <div id="gateOverlay">
+    <div class="gate-card" id="gateCard">
+      <h2>PRIVATE ACCESS ONLY</h2>
+      <p>Enter password to proceed.</p>
+      <div class="gate-row">
+        <input id="gateInput" type="password" placeholder="Passphrase" autocomplete="off" />
+        <button id="gateBtn">Enter</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container" style="display:none;" id="mainContent">
     <header>
       <div class="header-content">
         <div class="logo">ॐ GAROM INVESTMENTS - (INDIA)</div>
@@ -172,24 +184,36 @@
     </div>
   </div>
 
-  <div id="gateOverlay" aria-modal="true" role="dialog">
-    <div class="gate-card" id="gateCard">
-      <h2>PRIVATE ACCESS ONLY</h2>
-      <p>Enter password to proceed.</p>
-      <div class="gate-row">
-        <input id="gateInput" type="password" placeholder="Passphrase" autocomplete="current-password" />
-        <button id="gateBtn">Enter</button>
-      </div>
-    </div>
-  </div>
-
   <script>
+    // Password gate - simpler version
+    const PASSPHRASE = "2104";
+    
+    function tryPassword(){
+      const input = document.getElementById("gateInput");
+      const val = input.value.trim();
+      
+      if(val === PASSPHRASE){
+        document.getElementById("gateOverlay").style.display = "none";
+        document.getElementById("mainContent").style.display = "block";
+        initApp();
+      } else {
+        const card = document.getElementById("gateCard");
+        card.classList.remove("shake");
+        setTimeout(() => card.classList.add("shake"), 10);
+        input.value = "";
+      }
+    }
+    
+    document.getElementById("gateBtn").addEventListener("click", tryPassword);
+    document.getElementById("gateInput").addEventListener("keydown", (e) => {
+      if(e.key === "Enter") tryPassword();
+    });
+
     const REFRESH_MS = 120000;
 
-    // Special ticker mapping for problematic stocks
     const TICKER_MAP = {
-      'BINNY': '514215.BO',      // Suspended stock - will fetch last traded price
-      'DANISH': 'DANISH-SM.NS'   // SME stock on NSE
+      'BINNY': '514215.BO',
+      'DANISH': 'DANISH-SM.NS'
     };
 
     const PORTFOLIO = [
@@ -233,8 +257,8 @@
 
     const statusEl = document.getElementById("status");
     const updatedTimeEl = document.getElementById("updatedTime");
-    const refreshBtn = document.getElementById("refreshBtn");
     const debugEl = document.getElementById("debug");
+    let refreshBtn;
 
     function addDebug(msg, type='info'){
       const line = document.createElement('div');
@@ -243,20 +267,6 @@
       debugEl.appendChild(line);
       debugEl.scrollTop = debugEl.scrollHeight;
     }
-
-    const PASSPHRASE = "2104";
-    const SESSION_KEY = "gate_ok_v1";
-    const TTL_MS = 6*60*60*1000;
-    function gateOk(){try{const raw=sessionStorage.getItem(SESSION_KEY);if(!raw)return false;const {ok,t}=JSON.parse(raw);return ok&&(Date.now()-t)<TTL_MS;}catch{return false;}}
-    function setGateOk(){sessionStorage.setItem(SESSION_KEY,JSON.stringify({ok:true,t:Date.now()}));}
-    function tryOpen(){
-      const val=(document.getElementById("gateInput").value||"").trim();
-      if(val===PASSPHRASE){setGateOk();document.getElementById("gateOverlay").style.display="none";}
-      else{const c=document.getElementById("gateCard");c.classList.remove("shake");void c.offsetWidth;c.classList.add("shake");}
-    }
-    if(gateOk()) document.getElementById("gateOverlay").style.display="none";
-    document.getElementById("gateBtn").addEventListener("click",tryOpen);
-    document.getElementById("gateInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")tryOpen();});
 
     function setStatus(msg,type=''){statusEl.textContent=msg;statusEl.className=`status ${type}`;}
     function fmtMoney(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -306,15 +316,11 @@
     }
 
     async function fetchQuote(sym){
-      // Check if we have a special ticker mapping
       const specialTicker = TICKER_MAP[sym.toUpperCase()];
       
       const attempts = specialTicker 
         ? [{ticker: specialTicker, desc: 'Special'}]
-        : [
-            {ticker: `${sym}.BO`, desc: 'BSE'},
-            {ticker: `${sym}.NS`, desc: 'NSE'}
-          ];
+        : [{ticker: `${sym}.BO`, desc: 'BSE'}, {ticker: `${sym}.NS`, desc: 'NSE'}];
       
       for(const {ticker, desc} of attempts){
         try {
@@ -322,15 +328,12 @@
           const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
           
           const res = await fetch(proxyUrl);
-          
           if(!res.ok) continue;
           
           const proxyData = await res.json();
-          
           if(!proxyData.contents) continue;
           
           const data = JSON.parse(proxyData.contents);
-          
           if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice) continue;
           
           const meta = data.chart.result[0].meta;
@@ -340,11 +343,10 @@
           const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
           
           const noteType = sym === 'BINNY' ? 'warning' : 'success';
-          const note = sym === 'BINNY' ? ' (SUSPENDED - Last traded)' : '';
-          addDebug(`✓ ${sym} via ${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)${note}`, noteType);
+          const note = sym === 'BINNY' ? ' (SUSPENDED)' : '';
+          addDebug(`✓ ${sym}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)${note}`, noteType);
           
           return {c: price, d: change, dp: changePct};
-          
         } catch(e) {
           continue;
         }
@@ -470,7 +472,7 @@
         await new Promise(r => setTimeout(r, 500));
       }
 
-      addDebug(`✓ Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, 'success');
+      addDebug(`✓ Fetched ${updated}/${PORTFOLIO.length} stocks`, 'success');
 
       let totalInvested=0,totalValue=0;
       for(const stock of PORTFOLIO){
@@ -498,521 +500,13 @@
       updateAllocDonut(symbols, rowMap);
     }
 
-    document.addEventListener("DOMContentLoaded",()=>{
+    function initApp(){
+      refreshBtn = document.getElementById("refreshBtn");
       initializeTable();
       refreshAll();
       setInterval(refreshAll, REFRESH_MS);
-      refreshBtn.addEventListener("click", refreshAll);
-    });
-  </script>
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>ॐ GAROM INVESTMENTS - (INDIA)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <style>
-    :root{
-      --primary:#ff4d00; --secondary:#ffae00; --success:#a1a1a1; --danger:#e33232;
-      --warning:#f9c74f; --light:#f8f9fa; --dark:#212529; --gray:#6c757d;
-      --border:#dee2e6; --card-shadow:0 4px 6px rgba(0,0,0,0.05); --transition:all 0.3s ease;
+      if(refreshBtn) refreshBtn.addEventListener("click", refreshAll);
     }
-
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{font-family:'Inter',sans-serif;background:#000;color:#fff;line-height:1.6;}
-    .container{max-width:1400px;margin:0 auto;padding:20px;}
-
-    header{
-      background:linear-gradient(135deg,var(--primary),var(--secondary));
-      color:#fff;padding:20px 0;border-radius:12px;margin-bottom:12px;box-shadow:var(--card-shadow);
-    }
-    .header-content{display:flex;justify-content:space-between;align-items:center;}
-    .logo{font-size:1.8rem;font-weight:700;}
-    .toolbar{display:flex;gap:10px;align-items:center;}
-    .btn{background:#2a2a2a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 12px;cursor:pointer;}
-    .btn:hover{background:#333;}
-    .date{color:#eee;font-size:0.95rem;}
-
-    .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
-    .status.error{color:#f9c74f;}
-    .status.success{color:#31c920;}
-    
-    .debug{background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-family:monospace;font-size:0.85rem;max-height:150px;overflow-y:auto;}
-    .debug-line{margin:2px 0;}
-    .debug-line.success{color:#31c920;}
-    .debug-line.error{color:#e33232;}
-    .debug-line.info{color:#4cc9f0;}
-    .debug-line.warning{color:#f9c74f;}
-
-    .portfolio-summary{background:#1a1a1a;border-radius:12px;padding:22px;box-shadow:var(--card-shadow);margin-bottom:20px;}
-    .summary-title{font-size:1.5rem;margin-bottom:14px;color:var(--success);display:flex;align-items:center;gap:10px;}
-    .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;}
-    .summary-card{background:#2a2a2a;border-radius:10px;padding:16px;box-shadow:var(--card-shadow);transition:var(--transition);border-left:4px solid var(--primary);}
-    .summary-card:hover{transform:translateY(-5px);box-shadow:0 10px 20px rgba(0,0,0,0.3);}
-    .summary-card h3{font-size:0.9rem;color:#aaa;margin-bottom:6px;}
-    .summary-card .value{font-size:1.8rem;font-weight:700;margin-bottom:4px;}
-    .positive{color:#4cc9f0;}
-    .negative{color:#f72585;}
-
-    .panel{background:#1a1a1a;border-radius:12px;box-shadow:var(--card-shadow);padding:18px;margin-bottom:20px;}
-    .panel h3{font-size:1.1rem;margin-bottom:8px;color:#ddd;}
-    .chart-wrap{position:relative;height:260px;}
-
-    .portfolio-table{background:#1a1a1a;border-radius:12px;overflow:hidden;box-shadow:var(--card-shadow);margin-bottom:20px;}
-    .table-header{background:linear-gradient(135deg,var(--secondary),var(--primary));color:#fff;padding:14px 18px;font-weight:600;display:flex;justify-content:space-between;align-items:center;}
-    .table-container{overflow-x:auto;}
-    table{width:100%;border-collapse:collapse;}
-    th{text-align:left;padding:12px 16px;font-weight:600;color:#fff;background:rgba(255,255,255,0.1);}
-    td{padding:12px 16px;border-bottom:1px solid #333;font-size:0.9rem;}
-    tr:last-child td{border-bottom:none;}
-    tr:hover{background-color:rgba(67,97,238,0.1);}
-    .stock-symbol{font-weight:700;font-size:1.05rem;color:var(--success);}
-    .stock-price{font-weight:600;}
-    .positive-return{color:#31c920;font-weight:600;}
-    .negative-return{color:#e33232;font-weight:600;}
-
-    .footer{text-align:center;padding:16px;color:#aaa;font-size:0.9rem;}
-
-    @media (max-width:768px){
-      .header-content{flex-direction:column;gap:12px;}
-      .summary-grid{grid-template-columns:1fr;}
-      th,td{padding:10px 12px;font-size:0.85rem;}
-      .chart-wrap{height:220px;}
-    }
-
-    #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;color:#fff;font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,sans-serif;}
-    .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
-    .gate-card h2{margin:0 0 10px;font-size:1.25rem;}
-    .gate-card p{margin:0 0 14px;color:#bdbdbd;font-size:0.95rem;}
-    .gate-row{display:flex;gap:10px;}
-    .gate-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f14;color:#fff;outline:none;font-size:1rem;}
-    .gate-row button{padding:12px 14px;border-radius:10px;border:1px solid #333;background:#2a2a2a;color:#fff;cursor:pointer;font-weight:600;}
-    .shake{animation:shake 180ms linear 0s 2;}
-    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}100%{transform:translateX(0)}}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <div class="header-content">
-        <div class="logo">ॐ GAROM INVESTMENTS - (INDIA)</div>
-        <div class="toolbar">
-          <button id="refreshBtn" class="btn">Refresh now</button>
-          <div class="date">Updated: <span id="updatedTime">—</span></div>
-        </div>
-      </div>
-    </header>
-
-    <div id="status" class="status">Initializing…</div>
-    
-    <div id="debug" class="debug"></div>
-
-    <div class="portfolio-summary">
-      <h2 class="summary-title">Portfolio Overview</h2>
-      <div class="summary-grid">
-        <div class="summary-card">
-          <h3>Total Value</h3>
-          <div class="value" id="totalValue">₹0.00</div>
-          <div class="positive" id="totalValueNote">+₹0.00</div>
-        </div>
-        <div class="summary-card">
-          <h3>Total Invested</h3>
-          <div class="value" id="totalInvested">₹0.00</div>
-        </div>
-        <div class="summary-card">
-          <h3>Return</h3>
-          <div class="value" id="returnAmount">₹0.00</div>
-          <div class="positive" id="returnPercentage">+0.00%</div>
-        </div>
-        <div class="summary-card">
-          <h3>Average Return (%)</h3>
-          <div class="value" id="averageReturn">0.00%</div>
-        </div>
-        <div class="summary-card">
-          <h3>Active Positions</h3>
-          <div class="value" id="positionsCount">26</div>
-          <div class="positive">+<span id="positionsCountNote">26</span> positions</div>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-top:12px;">
-        <h3>Allocation by Holding</h3>
-        <div class="chart-wrap" style="height:340px;">
-          <canvas id="allocDonutChart"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h3>Overall Return by Holding</h3>
-      <div class="chart-wrap" style="height:340px;"><canvas id="returnBarChart"></canvas></div>
-    </div>
-
-    <div class="portfolio-table">
-      <div class="table-header">
-        <div>Holdings</div>
-        <div>Market Data (BSE/NSE)</div>
-      </div>
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Price</th>
-              <th>1D Return</th>
-              <th>Current Value</th>
-              <th>Overall Return</th>
-              <th>Total Invested</th>
-              <th>Avg Cost</th>
-              <th>Quantity</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="footer">
-      <p>Portfolio performance data • Personal use • N & G Moorjani</p>
-    </div>
-  </div>
-
-  <div id="gateOverlay" aria-modal="true" role="dialog">
-    <div class="gate-card" id="gateCard">
-      <h2>PRIVATE ACCESS ONLY</h2>
-      <p>Enter password to proceed.</p>
-      <div class="gate-row">
-        <input id="gateInput" type="password" placeholder="Passphrase" autocomplete="current-password" />
-        <button id="gateBtn">Enter</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const REFRESH_MS = 120000;
-
-    // Special ticker mapping for problematic stocks
-    const TICKER_MAP = {
-      'BINNY': '514215.BO',      // Suspended stock - will fetch last traded price
-      'DANISH': 'DANISH-SM.NS'   // SME stock on NSE
-    };
-
-    const PORTFOLIO = [
-      {symbol:"ABMKNO",avgCost:306.07,qty:1377},
-      {symbol:"APARINDS",avgCost:9663.04,qty:109},
-      {symbol:"AZAD",avgCost:1571.61,qty:3393},
-      {symbol:"AZTEC",avgCost:98.51,qty:9000},
-      {symbol:"BATLIBOI",avgCost:182.51,qty:4797},
-      {symbol:"BCLIND",avgCost:4615,qty:7614},
-      {symbol:"BETA",avgCost:1914.98,qty:155},
-      {symbol:"BINNY",avgCost:15771,qty:26836},
-      {symbol:"BBOX",avgCost:279.41,qty:2052},
-      {symbol:"BLS",avgCost:400.2,qty:3240},
-      {symbol:"COSMICCRF",avgCost:1313.69,qty:9200},
-      {symbol:"DANISH",avgCost:967,qty:3600},
-      {symbol:"EIEL",avgCost:284.9,qty:7974},
-      {symbol:"FRONTSP",avgCost:743.72,qty:3949},
-      {symbol:"HMEML",avgCost:74.33,qty:25600},
-      {symbol:"KLBRENG-B",avgCost:37418,qty:50940},
-      {symbol:"KMEW",avgCost:451.2,qty:44109},
-      {symbol:"KONSTELEC",avgCost:14610,qty:30000},
-      {symbol:"MACPOWER",avgCost:1056.28,qty:2862},
-      {symbol:"MARKSANS",avgCost:25718,qty:504},
-      {symbol:"PENIND",avgCost:166.76,qty:17082},
-      {symbol:"SHARDAMOTR",avgCost:434.66,qty:999},
-      {symbol:"SHIVALIK",avgCost:624.84,qty:594},
-      {symbol:"SGLTL",avgCost:17714,qty:62820},
-      {symbol:"SUMEETINDS",avgCost:19.04,qty:56520},
-      {symbol:"TASTYBITE",avgCost:10633.68,qty:59}
-    ];
-
-    const SYMBOL_COLORS = {
-      ABMKNO:'#FF5252',APARINDS:'#40C4FF',AZAD:'#00C853',AZTEC:'#7C4DFF',
-      BATLIBOI:'#18FFFF',BCLIND:'#FFB300',BETA:'#FF6E40',BINNY:'#E91E63',
-      BBOX:'#9C27B0',BLS:'#3F51B5',COSMICCRF:'#03A9F4',DANISH:'#00BCD4',
-      EIEL:'#009688',FRONTSP:'#4CAF50',HMEML:'#8BC34A','KLBRENG-B':'#CDDC39',
-      KMEW:'#FFEB3B',KONSTELEC:'#FFC107',MACPOWER:'#FF9800',MARKSANS:'#FF5722',
-      PENIND:'#795548',SHARDAMOTR:'#607D8B',SHIVALIK:'#F06292',SGLTL:'#BA68C8',
-      SUMEETINDS:'#9575CD',TASTYBITE:'#7986CB'
-    };
-
-    const statusEl = document.getElementById("status");
-    const updatedTimeEl = document.getElementById("updatedTime");
-    const refreshBtn = document.getElementById("refreshBtn");
-    const debugEl = document.getElementById("debug");
-
-    function addDebug(msg, type='info'){
-      const line = document.createElement('div');
-      line.className = `debug-line ${type}`;
-      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      debugEl.appendChild(line);
-      debugEl.scrollTop = debugEl.scrollHeight;
-    }
-
-    const PASSPHRASE = "2104";
-    const SESSION_KEY = "gate_ok_v1";
-    const TTL_MS = 6*60*60*1000;
-    function gateOk(){try{const raw=sessionStorage.getItem(SESSION_KEY);if(!raw)return false;const {ok,t}=JSON.parse(raw);return ok&&(Date.now()-t)<TTL_MS;}catch{return false;}}
-    function setGateOk(){sessionStorage.setItem(SESSION_KEY,JSON.stringify({ok:true,t:Date.now()}));}
-    function tryOpen(){
-      const val=(document.getElementById("gateInput").value||"").trim();
-      if(val===PASSPHRASE){setGateOk();document.getElementById("gateOverlay").style.display="none";}
-      else{const c=document.getElementById("gateCard");c.classList.remove("shake");void c.offsetWidth;c.classList.add("shake");}
-    }
-    if(gateOk()) document.getElementById("gateOverlay").style.display="none";
-    document.getElementById("gateBtn").addEventListener("click",tryOpen);
-    document.getElementById("gateInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")tryOpen();});
-
-    function setStatus(msg,type=''){statusEl.textContent=msg;statusEl.className=`status ${type}`;}
-    function fmtMoney(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
-    function fmtPct(n){const s=n>=0?'+':'';return `${s}${(Number(n)||0).toFixed(2)}%`;}
-    function fmtSignedMoney(n){const s=n>=0?'+':'-';return `${s}${fmtMoney(Math.abs(n))}`;}
-    function parseMoney(text){return parseFloat(String(text||'0').replace(/[^0-9.-]+/g,''))||0;}
-
-    function initializeTable(){
-      const tbody = document.getElementById('tbody');
-      tbody.innerHTML = '';
-      PORTFOLIO.forEach(stock => {
-        const invested = stock.avgCost * stock.qty;
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="stock-symbol">${stock.symbol}</td>
-          <td class="stock-price">—</td>
-          <td class="day-return">—</td>
-          <td class="current-value">—</td>
-          <td class="overall-return">—</td>
-          <td>${fmtMoney(invested)}</td>
-          <td>${fmtMoney(stock.avgCost)}</td>
-          <td>${stock.qty.toLocaleString('en-IN')}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function mapRowsBySymbol(){
-      const map={};
-      document.querySelectorAll("tbody tr").forEach(tr=>{
-        const symbol=tr.querySelector("td").textContent.trim().toUpperCase();
-        const tds=tr.children;
-        map[symbol]={
-          priceCell: tds[1],
-          dayCell: tds[2],
-          currentValCell: tds[3],
-          overallCell: tds[4],
-          investedCell: tds[5],
-          avgCostCell: tds[6],
-          qtyCell: tds[7],
-          get avgCost(){return parseFloat(this.avgCostCell.textContent.replace(/[^0-9.-]+/g,""))||0;},
-          get qty(){return parseFloat(this.qtyCell.textContent.replace(/[^0-9.-]+/g,""))||0;},
-          get invested(){return parseFloat(this.investedCell.textContent.replace(/[^0-9.-]+/g,""))||0;}
-        };
-      });
-      return map;
-    }
-
-    async function fetchQuote(sym){
-      // Check if we have a special ticker mapping
-      const specialTicker = TICKER_MAP[sym.toUpperCase()];
-      
-      const attempts = specialTicker 
-        ? [{ticker: specialTicker, desc: 'Special'}]
-        : [
-            {ticker: `${sym}.BO`, desc: 'BSE'},
-            {ticker: `${sym}.NS`, desc: 'NSE'}
-          ];
-      
-      for(const {ticker, desc} of attempts){
-        try {
-          const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
-          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
-          
-          const res = await fetch(proxyUrl);
-          
-          if(!res.ok) continue;
-          
-          const proxyData = await res.json();
-          
-          if(!proxyData.contents) continue;
-          
-          const data = JSON.parse(proxyData.contents);
-          
-          if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice) continue;
-          
-          const meta = data.chart.result[0].meta;
-          const price = meta.regularMarketPrice;
-          const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-          const change = price - prevClose;
-          const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
-          
-          const noteType = sym === 'BINNY' ? 'warning' : 'success';
-          const note = sym === 'BINNY' ? ' (SUSPENDED - Last traded)' : '';
-          addDebug(`✓ ${sym} via ${ticker}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)${note}`, noteType);
-          
-          return {c: price, d: change, dp: changePct};
-          
-        } catch(e) {
-          continue;
-        }
-      }
-      
-      addDebug(`✗ ${sym}: NOT FOUND`, 'error');
-      return null;
-    }
-
-    let returnBarChart, allocDonutChart;
-    
-    function ensureReturnBar(symbols){
-      if(!returnBarChart){
-        returnBarChart = new Chart(document.getElementById('returnBarChart').getContext('2d'), {
-          type:'bar',
-          data:{labels:symbols,datasets:[{label:'Overall Return (₹)',data:[],backgroundColor:[],barPercentage:0.6,borderRadius:6}]},
-          options:{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',scales:{x:{ticks:{color:'#ccc'},grid:{color:'rgba(255,255,255,0.08)'}},y:{ticks:{color:'#ccc',font:{size:10}},grid:{color:'rgba(255,255,255,0.08)'}}},plugins:{legend:{labels:{color:'#fff'}}}}
-        });
-      }
-    }
-
-    function updateReturnBars(symbols, returnMap){
-      const data = symbols.map(s=> returnMap[s] ?? 0);
-      const colors = data.map(v=> v>=0 ? '#31c920' : '#e33232');
-      returnBarChart.data.labels = symbols;
-      returnBarChart.data.datasets[0].data = data;
-      returnBarChart.data.datasets[0].backgroundColor = colors;
-      returnBarChart.update('none');
-    }
-
-    const donutCenterText = {
-      id: 'donutCenterText',
-      afterDraw(chart, args, options){
-        const {ctx, chartArea} = chart;
-        if(!chartArea) return;
-        const centerX = (chartArea.left + chartArea.right)/2;
-        const centerY = (chartArea.top + chartArea.bottom)/2;
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '600 18px Inter';
-        ctx.fillText(options.totalValue || '₹0.00', centerX, centerY - 8);
-        ctx.fillStyle = options.returnColor || '#31c920';
-        ctx.font = '600 12px Inter';
-        ctx.fillText(options.totalReturn || '+₹0.00', centerX, centerY + 16);
-        ctx.restore();
-      }
-    };
-
-    function ensureAllocDonut(symbols){
-      if(!allocDonutChart){
-        allocDonutChart = new Chart(document.getElementById('allocDonutChart').getContext('2d'), {
-          type:'doughnut',
-          data:{labels:symbols,datasets:[{label:'% of Portfolio',data:[],backgroundColor:symbols.map(s=>SYMBOL_COLORS[s]||'#888'),borderColor:'#111',borderWidth:1}]},
-          options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:true,position:'right',labels:{color:'#fff',font:{size:10}}},tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${(ctx.raw*100).toFixed(2)}%`}},donutCenterText:{totalValue:'₹0.00',totalReturn:'+₹0.00',returnColor:'#31c920'}}},
-          plugins:[donutCenterText]
-        });
-      }
-    }
-
-    function updateAllocDonut(symbols, rows){
-      const vals = symbols.map(s=> parseMoney(rows[s]?.currentValCell.textContent || '0'));
-      const total = vals.reduce((a,b)=>a+b,0);
-      const weights = total > 0 ? vals.map(v=> v/total) : vals.map(()=>0);
-      allocDonutChart.data.datasets[0].data = weights;
-      const totalInvested = symbols.reduce((sum,s)=> sum + (rows[s]?.invested || 0), 0);
-      const totalReturn = total - totalInvested;
-      allocDonutChart.options.plugins.donutCenterText.totalValue = fmtMoney(total);
-      allocDonutChart.options.plugins.donutCenterText.totalReturn = fmtSignedMoney(totalReturn);
-      allocDonutChart.options.plugins.donutCenterText.returnColor = totalReturn>=0 ? '#31c920' : '#e33232';
-      allocDonutChart.update('none');
-    }
-
-    async function refreshAll(){
-      debugEl.innerHTML = '';
-      addDebug('Starting refresh...', 'info');
-      
-      const rowMap = mapRowsBySymbol();
-      const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
-      ensureReturnBar(symbols);
-      ensureAllocDonut(symbols);
-      
-      setStatus("Fetching stock prices...", '');
-      let updated=0;
-      const returnMap = {};
-
-      for(const stock of PORTFOLIO){
-        const row = rowMap[stock.symbol.toUpperCase()];
-        if(!row) continue;
-
-        const q = await fetchQuote(stock.symbol);
-        
-        if(!q){
-          row.priceCell.textContent="—";
-          row.dayCell.textContent="No data";
-          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
-          await new Promise(r => setTimeout(r, 500));
-          continue;
-        }
-        
-        const price = q.c;
-        const dayAbs = q.d;
-        const dayPct = q.dp;
-
-        row.priceCell.textContent=fmtMoney(price);
-        row.dayCell.textContent=`${fmtSignedMoney(dayAbs)} (${fmtPct(dayPct)})`;
-        row.dayCell.classList.toggle("positive-return",dayPct>=0);
-        row.dayCell.classList.toggle("negative-return",dayPct<0);
-
-        const currentValue = price * stock.qty;
-        const overallReturn = (price - stock.avgCost) * stock.qty;
-        const overallReturnPct = (overallReturn / (stock.avgCost * stock.qty)) * 100;
-
-        row.currentValCell.textContent=fmtMoney(currentValue);
-        row.overallCell.textContent=`${fmtSignedMoney(overallReturn)} (${fmtPct(overallReturnPct)})`;
-        row.overallCell.classList.toggle("positive-return",overallReturn>=0);
-        row.overallCell.classList.toggle("negative-return",overallReturn<0);
-
-        returnMap[stock.symbol.toUpperCase()]=overallReturn;
-        updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      addDebug(`✓ Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, 'success');
-
-      let totalInvested=0,totalValue=0;
-      for(const stock of PORTFOLIO){
-        const row = rowMap[stock.symbol.toUpperCase()];
-        if(!row) continue;
-        totalInvested += stock.avgCost * stock.qty;
-        totalValue += parseMoney(row.currentValCell.textContent);
-      }
-      const totalReturn = totalValue - totalInvested;
-      const avgReturn = totalInvested>0 ? (totalReturn/totalInvested)*100 : 0;
-
-      document.getElementById('totalInvested').textContent=fmtMoney(totalInvested);
-      document.getElementById('totalValue').textContent=fmtMoney(totalValue);
-      document.getElementById('totalValueNote').textContent=fmtSignedMoney(totalReturn);
-      document.getElementById('returnAmount').textContent=fmtSignedMoney(totalReturn);
-      document.getElementById('returnPercentage').textContent=fmtPct(avgReturn);
-      document.getElementById('averageReturn').textContent=fmtPct(avgReturn);
-      document.getElementById('positionsCount').textContent=updated;
-      document.getElementById('positionsCountNote').textContent=updated;
-
-      updatedTimeEl.textContent=new Date().toLocaleTimeString();
-      setStatus(`✓ Updated ${updated}/${PORTFOLIO.length} stocks`, 'success');
-
-      updateReturnBars(symbols, returnMap);
-      updateAllocDonut(symbols, rowMap);
-    }
-
-    document.addEventListener("DOMContentLoaded",()=>{
-      initializeTable();
-      refreshAll();
-      setInterval(refreshAll, REFRESH_MS);
-      refreshBtn.addEventListener("click", refreshAll);
-    });
   </script>
 </body>
 </html>

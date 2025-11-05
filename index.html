@@ -8,7 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root{
-      --primary:#a4fca7; --secondary:#d479c0; --success:#a1a1a1; --danger:#e33232;
+      --primary:#41689e; --secondary:#8ccfbb; --success:#a1a1a1; --danger:#e33232;
       --warning:#f9c74f; --light:#f8f9fa; --dark:#212529; --gray:#6c757d;
       --border:#dee2e6; --card-shadow:0 4px 6px rgba(0,0,0,0.05); --transition:all 0.3s ease;
       --positive:#31c920;
@@ -19,9 +19,39 @@
     .container{max-width:1400px;margin:0 auto;padding:20px;}
 
     header{
-      background:linear-gradient(135deg,var(--primary),var(--secondary));
-      color:#fff;padding:20px 0;border-radius:12px;margin-bottom:12px;box-shadow:var(--card-shadow);
-    }
+  background:linear-gradient(135deg,var(--primary),var(--secondary));
+  color:#fff;
+  padding:20px 0;
+  border-radius:12px;
+  margin-bottom:12px;
+  box-shadow:var(--card-shadow);
+  position:relative;
+  overflow:hidden;
+  cursor:pointer;
+}
+
+header::before{
+  content:'';
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  bottom:0;
+  background:radial-gradient(circle 80px at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255,255,255,0.25), transparent 80%);
+  pointer-events:none;
+  opacity:0;
+  transition:opacity 0.3s ease;
+}
+
+header:hover::before{
+  opacity:1;
+}
+
+header:active{
+  transform:scale(0.98);
+}
+
+
     .header-content{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:0 20px;}
     .logo{font-size:1.8rem;font-weight:700;}
     .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -627,6 +657,36 @@
       setInterval(refreshAll, REFRESH_MS);
       if(refreshBtn) refreshBtn.addEventListener("click", refreshAll);
     });
+    document.querySelector('header').addEventListener('click', function(){
+  // Optional: add a subtle animation feedback
+  this.style.transform = 'scale(0.98)';
+  setTimeout(() => {
+    this.style.transform = 'translateY(-2px)';
+  }, 100);
+});
+
+const header = document.querySelector('header');
+
+header.addEventListener('mousemove', (e) => {
+  const rect = header.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  header.style.setProperty('--mouse-x', `${x}px`);
+  header.style.setProperty('--mouse-y', `${y}px`);
+});
+
+header.addEventListener('mouseleave', () => {
+  // Optional: reset position
+});
+
+header.addEventListener('click', function(){
+  this.style.transform = 'scale(0.96)';
+  setTimeout(() => {
+    this.style.transform = 'scale(1)';
+  }, 150);
+});
+
   </script>
 </body>
 </html>

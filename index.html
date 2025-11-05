@@ -183,7 +183,7 @@
   </div>
 
   <script>
-    const REFRESH_MS = 120000;
+    const REFRESH_MS = 300000; // 5 minutes (longer to avoid rate limits)
 
     const PORTFOLIO = [
       {symbol:"ABMKNO",avgCost:306.07,qty:1377},
@@ -298,10 +298,8 @@
       return map;
     }
 
-    // Using working CORS proxy with Yahoo Finance
+    // Slower fetching with longer delays to avoid rate limits
     async function fetchQuote(sym){
-      addDebug(`Fetching ${sym}...`, 'info');
-      
       const attempts = [
         {suffix: '.BO', exchange: 'BSE'},
         {suffix: '.NS', exchange: 'NSE'}
@@ -313,26 +311,21 @@
           const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
           const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
           
-          addDebug(`Trying ${ticker} via CORS proxy`, 'info');
-          
           const res = await fetch(proxyUrl);
           
           if(!res.ok){
-            addDebug(`${ticker}: Proxy returned ${res.status}`, 'error');
             continue;
           }
           
           const proxyData = await res.json();
           
           if(!proxyData.contents){
-            addDebug(`${ticker}: No contents from proxy`, 'error');
             continue;
           }
           
           const data = JSON.parse(proxyData.contents);
           
           if(!data?.chart?.result?.[0]?.meta?.regularMarketPrice){
-            addDebug(`${ticker}: No price in Yahoo response`, 'error');
             continue;
           }
           
@@ -347,7 +340,7 @@
           return {c: price, d: change, dp: changePct};
           
         } catch(e) {
-          addDebug(`${sym}${suffix}: ${e.message}`, 'error');
+          continue;
         }
       }
       
@@ -422,18 +415,19 @@
 
     async function refreshAll(){
       debugEl.innerHTML = '';
-      addDebug('Starting refresh with CORS proxy...', 'info');
+      addDebug('Starting refresh (slow mode to avoid rate limits)...', 'info');
       
       const rowMap = mapRowsBySymbol();
       const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
       ensureReturnBar(symbols);
       ensureAllocDonut(symbols);
       
-      setStatus("Fetching stock prices via proxy...", '');
+      setStatus("Fetching stock prices (this will take ~2 minutes)...", '');
       let updated=0;
       const returnMap = {};
 
-      for(const stock of PORTFOLIO){
+      for(let i = 0; i < PORTFOLIO.length; i++){
+        const stock = PORTFOLIO[i];
         const row = rowMap[stock.symbol.toUpperCase()];
         if(!row) continue;
 
@@ -442,7 +436,9 @@
         if(!q){
           row.priceCell.textContent="—";
           row.dayCell.textContent="No data";
-          setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+          setStatus(`Fetching… (${updated}/${PORTFOLIO.length}) - ${Math.ceil((i+1)/PORTFOLIO.length*100)}%`, '');
+          // Longer delay after failed attempts
+          await new Promise(r => setTimeout(r, 2000));
           continue;
         }
         
@@ -466,10 +462,10 @@
 
         returnMap[stock.symbol.toUpperCase()]=overallReturn;
         updated++;
-        setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
+        setStatus(`Fetching… (${updated}/${PORTFOLIO.length}) - ${Math.ceil((i+1)/PORTFOLIO.length*100)}%`, '');
         
-        // Small delay to avoid rate limiting
-        await new Promise(r => setTimeout(r, 500));
+        // 3 second delay between successful requests to avoid rate limiting
+        await new Promise(r => setTimeout(r, 3000));
       }
 
       addDebug(`Successfully fetched ${updated}/${PORTFOLIO.length} stocks`, updated > 0 ? 'success' : 'error');
@@ -494,7 +490,7 @@
       document.getElementById('positionsCountNote').textContent=updated;
 
       updatedTimeEl.textContent=new Date().toLocaleTimeString();
-      setStatus(`✓ Updated ${updated} stocks`, 'success');
+      setStatus(`✓ Updated ${updated}/${PORTFOLIO.length} stocks`, 'success');
 
       updateReturnBars(symbols, returnMap);
       updateAllocDonut(symbols, rowMap);

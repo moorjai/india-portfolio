@@ -31,13 +31,6 @@
     .status{margin:10px 0 16px;font-size:0.95rem;color:#bbb;}
     .status.error{color:#f9c74f;}
     .status.success{color:#31c920;}
-    
-    .debug{background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-family:monospace;font-size:0.85rem;max-height:150px;overflow-y:auto;}
-    .debug-line{margin:2px 0;}
-    .debug-line.success{color:#31c920;}
-    .debug-line.error{color:#e33232;}
-    .debug-line.info{color:#4cc9f0;}
-    .debug-line.warning{color:#f9c74f;}
 
     .portfolio-summary{background:#1a1a1a;border-radius:12px;padding:22px;box-shadow:var(--card-shadow);margin-bottom:20px;}
     .summary-title{font-size:1.5rem;margin-bottom:14px;color:var(--success);display:flex;align-items:center;gap:10px;}
@@ -65,6 +58,7 @@
     .stock-price{font-weight:600;}
     .positive-return{color:#31c920;font-weight:600;}
     .negative-return{color:#e33232;font-weight:600;}
+    .suspended{color:#f9c74f;font-style:italic;}
 
     .footer{text-align:center;padding:16px;color:#aaa;font-size:0.9rem;}
 
@@ -75,31 +69,19 @@
       .chart-wrap{height:220px;}
     }
 
-    #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;}
-    .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);color:#fff;}
+    #gateOverlay{position:fixed;inset:0;background:#0b0b0f;display:grid;place-items:center;z-index:9999;color:#fff;font-family:system-ui,-apple-system,Inter,Segoe UI,Roboto,sans-serif;}
+    .gate-card{width:min(92vw,420px);background:#141419;border:1px solid #222;border-radius:14px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
     .gate-card h2{margin:0 0 10px;font-size:1.25rem;}
     .gate-card p{margin:0 0 14px;color:#bdbdbd;font-size:0.95rem;}
     .gate-row{display:flex;gap:10px;}
     .gate-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #2a2a2a;background:#0f0f14;color:#fff;outline:none;font-size:1rem;}
     .gate-row button{padding:12px 14px;border-radius:10px;border:1px solid #333;background:#2a2a2a;color:#fff;cursor:pointer;font-weight:600;}
-    .gate-row button:hover{background:#333;}
-    .shake{animation:shake 180ms linear;}
-    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}}
+    .shake{animation:shake 180ms linear 0s 2;}
+    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}100%{transform:translateX(0)}}
   </style>
 </head>
 <body>
-  <div id="gateOverlay">
-    <div class="gate-card" id="gateCard">
-      <h2>PRIVATE ACCESS ONLY</h2>
-      <p>Enter password to proceed.</p>
-      <div class="gate-row">
-        <input id="gateInput" type="password" placeholder="Passphrase" autocomplete="off" />
-        <button id="gateBtn">Enter</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="container" style="display:none;" id="mainContent">
+  <div class="container">
     <header>
       <div class="header-content">
         <div class="logo">ॐ GAROM INVESTMENTS - (INDIA)</div>
@@ -111,8 +93,6 @@
     </header>
 
     <div id="status" class="status">Initializing…</div>
-    
-    <div id="debug" class="debug"></div>
 
     <div class="portfolio-summary">
       <h2 class="summary-title">Portfolio Overview</h2>
@@ -184,36 +164,33 @@
     </div>
   </div>
 
-  <script>
-    // Password gate - simpler version
-    const PASSPHRASE = "2104";
-    
-    function tryPassword(){
-      const input = document.getElementById("gateInput");
-      const val = input.value.trim();
-      
-      if(val === PASSPHRASE){
-        document.getElementById("gateOverlay").style.display = "none";
-        document.getElementById("mainContent").style.display = "block";
-        initApp();
-      } else {
-        const card = document.getElementById("gateCard");
-        card.classList.remove("shake");
-        setTimeout(() => card.classList.add("shake"), 10);
-        input.value = "";
-      }
-    }
-    
-    document.getElementById("gateBtn").addEventListener("click", tryPassword);
-    document.getElementById("gateInput").addEventListener("keydown", (e) => {
-      if(e.key === "Enter") tryPassword();
-    });
+  <div id="gateOverlay" aria-modal="true" role="dialog">
+    <div class="gate-card" id="gateCard">
+      <h2>PRIVATE ACCESS ONLY</h2>
+      <p>Enter password to proceed.</p>
+      <div class="gate-row">
+        <input id="gateInput" type="password" placeholder="Passphrase" autocomplete="current-password" />
+        <button id="gateBtn">Enter</button>
+      </div>
+    </div>
+  </div>
 
+  <script>
     const REFRESH_MS = 120000;
 
+    // Special ticker for DANISH (SME stock)
     const TICKER_MAP = {
-      'BINNY': '514215.BO',
       'DANISH': 'DANISH-SM.NS'
+    };
+
+    // Hardcoded data for BINNY (suspended stock - last traded ₹145.50)
+    const HARDCODED_PRICES = {
+      'BINNY': {
+        price: 145.50,
+        change: 0,
+        changePct: 0,
+        note: 'Trading Suspended'
+      }
     };
 
     const PORTFOLIO = [
@@ -257,16 +234,21 @@
 
     const statusEl = document.getElementById("status");
     const updatedTimeEl = document.getElementById("updatedTime");
-    const debugEl = document.getElementById("debug");
-    let refreshBtn;
+    const refreshBtn = document.getElementById("refreshBtn");
 
-    function addDebug(msg, type='info'){
-      const line = document.createElement('div');
-      line.className = `debug-line ${type}`;
-      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      debugEl.appendChild(line);
-      debugEl.scrollTop = debugEl.scrollHeight;
+    const PASSPHRASE = "2104";
+    const SESSION_KEY = "gate_ok_v1";
+    const TTL_MS = 6*60*60*1000;
+    function gateOk(){try{const raw=sessionStorage.getItem(SESSION_KEY);if(!raw)return false;const {ok,t}=JSON.parse(raw);return ok&&(Date.now()-t)<TTL_MS;}catch{return false;}}
+    function setGateOk(){sessionStorage.setItem(SESSION_KEY,JSON.stringify({ok:true,t:Date.now()}));}
+    function tryOpen(){
+      const val=(document.getElementById("gateInput").value||"").trim();
+      if(val===PASSPHRASE){setGateOk();document.getElementById("gateOverlay").style.display="none";}
+      else{const c=document.getElementById("gateCard");c.classList.remove("shake");void c.offsetWidth;c.classList.add("shake");}
     }
+    if(gateOk()) document.getElementById("gateOverlay").style.display="none";
+    document.getElementById("gateBtn").addEventListener("click",tryOpen);
+    document.getElementById("gateInput").addEventListener("keydown",(e)=>{if(e.key==="Enter")tryOpen();});
 
     function setStatus(msg,type=''){statusEl.textContent=msg;statusEl.className=`status ${type}`;}
     function fmtMoney(n){return '₹'+(Number(n)||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -316,13 +298,20 @@
     }
 
     async function fetchQuote(sym){
+      // Check if we have hardcoded data
+      const hardcoded = HARDCODED_PRICES[sym.toUpperCase()];
+      if(hardcoded){
+        return {c: hardcoded.price, d: hardcoded.change, dp: hardcoded.changePct, note: hardcoded.note};
+      }
+
+      // Check for special ticker
       const specialTicker = TICKER_MAP[sym.toUpperCase()];
       
       const attempts = specialTicker 
-        ? [{ticker: specialTicker, desc: 'Special'}]
-        : [{ticker: `${sym}.BO`, desc: 'BSE'}, {ticker: `${sym}.NS`, desc: 'NSE'}];
+        ? [{ticker: specialTicker}]
+        : [{ticker: `${sym}.BO`}, {ticker: `${sym}.NS`}];
       
-      for(const {ticker, desc} of attempts){
+      for(const {ticker} of attempts){
         try {
           const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
           const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
@@ -342,17 +331,12 @@
           const change = price - prevClose;
           const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
           
-          const noteType = sym === 'BINNY' ? 'warning' : 'success';
-          const note = sym === 'BINNY' ? ' (SUSPENDED)' : '';
-          addDebug(`✓ ${sym}: ₹${price.toFixed(2)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)${note}`, noteType);
-          
           return {c: price, d: change, dp: changePct};
         } catch(e) {
           continue;
         }
       }
       
-      addDebug(`✗ ${sym}: NOT FOUND`, 'error');
       return null;
     }
 
@@ -422,9 +406,6 @@
     }
 
     async function refreshAll(){
-      debugEl.innerHTML = '';
-      addDebug('Starting refresh...', 'info');
-      
       const rowMap = mapRowsBySymbol();
       const symbols = PORTFOLIO.map(s=>s.symbol.toUpperCase());
       ensureReturnBar(symbols);
@@ -453,9 +434,15 @@
         const dayPct = q.dp;
 
         row.priceCell.textContent=fmtMoney(price);
-        row.dayCell.textContent=`${fmtSignedMoney(dayAbs)} (${fmtPct(dayPct)})`;
-        row.dayCell.classList.toggle("positive-return",dayPct>=0);
-        row.dayCell.classList.toggle("negative-return",dayPct<0);
+        
+        if(q.note){
+          row.dayCell.textContent=q.note;
+          row.dayCell.className='day-return suspended';
+        } else {
+          row.dayCell.textContent=`${fmtSignedMoney(dayAbs)} (${fmtPct(dayPct)})`;
+          row.dayCell.classList.toggle("positive-return",dayPct>=0);
+          row.dayCell.classList.toggle("negative-return",dayPct<0);
+        }
 
         const currentValue = price * stock.qty;
         const overallReturn = (price - stock.avgCost) * stock.qty;
@@ -471,8 +458,6 @@
         setStatus(`Fetching… (${updated}/${PORTFOLIO.length})`, '');
         await new Promise(r => setTimeout(r, 500));
       }
-
-      addDebug(`✓ Fetched ${updated}/${PORTFOLIO.length} stocks`, 'success');
 
       let totalInvested=0,totalValue=0;
       for(const stock of PORTFOLIO){
@@ -500,13 +485,12 @@
       updateAllocDonut(symbols, rowMap);
     }
 
-    function initApp(){
-      refreshBtn = document.getElementById("refreshBtn");
+    document.addEventListener("DOMContentLoaded",()=>{
       initializeTable();
       refreshAll();
       setInterval(refreshAll, REFRESH_MS);
       if(refreshBtn) refreshBtn.addEventListener("click", refreshAll);
-    }
+    });
   </script>
 </body>
 </html>

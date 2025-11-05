@@ -67,6 +67,11 @@
     .stock-symbol{font-weight:700;font-size:1.05rem;color:var(--success);}
     .stock-price{font-weight:600;}
     .positive-return{color:var(--positive);font-weight:600;}
+    .summary-card .value + .positive {
+  display:inline-block;
+  width:100%;
+  margin-top:2px;
+}
     .negative-return{color:#e33232;font-weight:600;}
     .suspended{color:#f9c74f;font-style:italic;}
 
@@ -126,8 +131,8 @@
         <div class="summary-card">
           <h3>Return</h3>
           <div class="value" id="returnAmount">₹0.00</div>
-          <div class="positive" id="returnPercentage">+0.00%</div>
-        </div>
+           <div class="positive" id="returnPercentage">+0.00%</div>
+      </div>
         <div class="summary-card">
           <h3>Average Return (%)</h3>
           <div class="value" id="averageReturn">0.00%</div>
